@@ -35,6 +35,7 @@ const defaultState = () => ({
     defaultBagKg: 5 * LB,
     bagSizes: '5lb, 300g',
     bagWords: 'Retail = 300g',  // words in product names that mean a bag size
+    blockWords: 'Brazil IPE',   // products never imported (and removed if already loaded)
     defaultLossPct: 15,     // green = roasted × (1 + this %)
     defaultBatchKg: 18 * LB,
     dateFormat: 'MDY',
@@ -90,8 +91,9 @@ const fmtW = (kg, digits = 2) => toDisp(kg).toFixed(digits);
 const inW = kg => kg ? +toDisp(kg).toFixed(2) : '';
 const unitLabel = () => state.settings.unit;
 
-// Label a bag size given in grams: "5 lb", "1 kg", "12 oz", "300 g".
+// Label a bag size given in grams: "5 lb", "1 kg", "12 oz", "300 g". 0 means "ordered by the batch".
 function sizeLabel(g) {
+  if (+g === 0) return 'Batch orders';
   const lb = g / 453.592;
   if (g >= 450 && Math.abs(lb - Math.round(lb * 4) / 4) < 0.01) return `${+(Math.round(lb * 4) / 4)} lb`;
   if (g >= 1000 && g % 1000 === 0) return `${g / 1000} kg`;
@@ -220,6 +222,11 @@ function baseName(product) {
   for (const b of bagWords()) t = t.replace(new RegExp(`\\s*\\b${b.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'ig'), '');
   return t.replace(/[\s\-–|/]+$/, '').trim() || String(product).trim();
 }
+// Products listed under Settings → "Never import" are dropped on import and purged from saved orders.
+function isBlocked(product, settings = state.settings) {
+  const p = norm(product);
+  return String(settings.blockWords || '').split(',').map(norm).filter(Boolean).some(w => p.includes(w));
+}
 const isIgnored = product => state.ignored.some(i => norm(product).includes(norm(i)));
 const categoryOf = c => (c.category || '').trim() || 'Uncategorized';
 const categories = () => [...new Set(state.coffees.map(categoryOf))];
@@ -275,7 +282,8 @@ function computeForecast() {
     if (coffee.active === false) continue;
     const src = srcById[o.source] || { id: o.source, name: o.source, mode: 'forecast' };
     if (!isTarget && src.mode === 'actual') continue;
-    const g = Math.round((o.bagKg ?? s.defaultBagKg) * 1000);
+    // Coffees ordered by the batch (e.g. bulk/contract roasting): quantity = number of roaster batches.
+    const g = coffee.orderUnit === 'batch' ? 0 : Math.round((o.bagKg ?? s.defaultBagKg) * 1000);
     const byKey = lines[coffee.id] ||= {};
     const line = byKey[o.account + '|' + src.id] ||= { account: o.account, source: src, sizes: {} };
     const sz = line.sizes[g] ||= { hist: new Array(N).fill(0), confirmed: 0 };
@@ -284,6 +292,10 @@ function computeForecast() {
 
   const allSizes = new Set();
   const rows = state.coffees.filter(c => c.active !== false).map(coffee => {
+    const shrink = (coffee.lossPct ?? s.defaultLossPct) / 100;
+    const batchKg = +(coffee.batchKg || s.defaultBatchKg);
+    // kg roasted per unit: a bag's weight, or for a batch, the roasted yield of one green batch
+    const uk = g => +g === 0 ? batchKg / (1 + shrink) : g / 1000;
     const units = {};   // g -> forecast bags (unrounded)
     const bySource = {}; // sourceId -> { name, units: {g: n} }
     const hist = new Array(N).fill(0); // kg per week, for the trend arrow
@@ -294,26 +306,24 @@ function computeForecast() {
         const fc = sz.hist.reduce((a, n, i) => a + n * weights[i], 0) / wSum;
         const use = l.source.mode === 'actual' ? sz.confirmed : Math.max(fc, sz.confirmed);
         if (sz.confirmed > 0 && sz.confirmed >= fc) confirmedAny = true;
-        sizes[g] = use; kg += use * g / 1000;
+        sizes[g] = use; kg += use * uk(g);
         units[g] = (units[g] || 0) + use;
         const bs = bySource[l.source.id] ||= { name: l.source.name, units: {} };
         bs.units[g] = (bs.units[g] || 0) + use;
-        sz.hist.forEach((n, i) => { hist[i] += n * g / 1000; });
+        sz.hist.forEach((n, i) => { hist[i] += n * uk(g); });
       }
       const histKg = new Array(N).fill(0);
-      for (const [g, sz] of Object.entries(l.sizes)) sz.hist.forEach((n, i) => { histKg[i] += n * g / 1000; });
+      for (const [g, sz] of Object.entries(l.sizes)) sz.hist.forEach((n, i) => { histKg[i] += n * uk(g); });
       return { name: l.account, source: l.source, sizes, kg, histKg, confirmedAny };
     }).filter(a => a.kg > 0).sort((a, b) => b.kg - a.kg);
 
     const bags = {};
     for (const [g, n] of Object.entries(units)) { const b = Math.round(n); if (b > 0) { bags[g] = b; allSizes.add(+g); } }
-    const bagKg = Object.entries(bags).reduce((a, [g, n]) => a + n * g / 1000, 0);
+    const bagKg = Object.entries(bags).reduce((a, [g, n]) => a + n * uk(g), 0);
     const adj = +(state.adjustments[coffee.id] || 0);
     const leftover = +(state.leftovers[coffee.id] || 0);
     const roasted = Math.max(0, bagKg + adj - leftover);
-    const shrink = (coffee.lossPct ?? s.defaultLossPct) / 100;
     const green = roasted * (1 + shrink);
-    const batchKg = +(coffee.batchKg || s.defaultBatchKg);
     const batches = batchKg > 0 ? green / batchKg : 0;
     return { coffee, accounts, bySource, bags, bagKg, hist, adj, leftover, roasted, green, batches, batchKg };
   });
@@ -373,7 +383,7 @@ views.production = () => {
     <div class="stat"><b>${fmtW(sum(rows, 'roasted'))}</b><span>Total roasted ${u}</span></div>
     <div class="stat"><b>${fmtW(sum(rows, 'green'))}</b><span>Green ${u} to pull</span></div>
     <div class="stat"><b>${totBatches.toFixed(2)}</b><span>Batches (${rows.reduce((a, r) => a + ceilB(r.batches), 0)} rounded up)</span></div>
-    ${f.sizes.map(g => `<div class="stat"><b>${bagTotals[g] || 0}</b><span>${sizeLabel(g)} bags</span></div>`).join('')}
+    ${f.sizes.map(g => `<div class="stat"><b>${bagTotals[g] || 0}</b><span>${g === 0 ? 'Batch orders' : `${sizeLabel(g)} bags`}</span></div>`).join('')}
   </div>`;
 
   const cols = 8 + f.sizes.length;
@@ -497,7 +507,7 @@ views.coffees = () => {
 
   html += `<div class="card"><h2>Your coffees <span class="pill">${state.coffees.length}</span></h2>
     ${state.coffees.length ? '' : '<p class="muted">No coffees yet.</p>'}
-    <div class="table-wrap"><table><thead><tr><th>On</th><th>Name</th><th>Group</th><th>Day</th><th>Also match</th><th>Only for accounts</th><th class="num">Shrink %</th><th class="num">Batch ${u}</th><th>Blend recipe</th><th></th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>On</th><th>Name</th><th>Group</th><th>Day</th><th>Also match</th><th>Only for accounts</th><th>Ordered in</th><th class="num">Shrink %</th><th class="num">Batch ${u}</th><th>Blend recipe</th><th></th></tr></thead><tbody>
     ${state.coffees.map(c => `<tr>
       <td><input type="checkbox" data-cf="active" data-id="${c.id}" ${c.active !== false ? 'checked' : ''}></td>
       <td><input type="text" data-cf="name" data-id="${c.id}" value="${esc(c.name)}" style="min-width:150px"></td>
@@ -505,6 +515,7 @@ views.coffees = () => {
       <td><select data-cf="roastDay" data-id="${c.id}">${dayOptions(c.roastDay)}</select></td>
       <td><input type="text" data-cf="aliases" data-id="${c.id}" value="${esc((c.aliases || []).join(', '))}" style="min-width:160px"></td>
       <td><input type="text" data-cf="onlyFor" data-id="${c.id}" value="${esc((c.onlyFor || []).join(', '))}" list="acctList2" placeholder="all accounts" style="min-width:140px"></td>
+      <td><select data-cf="orderUnit" data-id="${c.id}"><option value="">Bags</option><option value="batch" ${c.orderUnit === 'batch' ? 'selected' : ''}>Batches</option></select></td>
       <td class="num"><input type="number" step="0.5" data-cf="lossPct" data-id="${c.id}" value="${c.lossPct}"></td>
       <td class="num"><input type="number" step="0.5" data-cf="batchKg" data-id="${c.id}" value="${inW(c.batchKg)}"></td>
       <td><input type="text" data-cf="recipe" data-id="${c.id}" value="${esc(c.recipe || '')}" placeholder="e.g. Brazil 40, Colombia 30, Peru 30" style="min-width:200px"></td>
@@ -512,7 +523,7 @@ views.coffees = () => {
     </tr>`).join('')}
     </tbody></table></div>
     <datalist id="acctList2">${[...new Set(state.orders.map(o => o.account))].sort().map(a => `<option value="${esc(a)}">`).join('')}</datalist>
-    <p class="small muted"><b>Only for accounts:</b> for custom roasts — e.g. a coffee "Le Croissant Guatemala" matching "Custom Roast" only for Le Croissant. Leave blank to match everyone.<br><b>Blend recipe:</b> components with percentages; the sheet splits the blend's green weight between them.</p></div>`;
+    <p class="small muted"><b>Only for accounts:</b> for custom roasts — e.g. a coffee "Le Croissant Guatemala" matching "Custom Roast" only for Le Croissant. Leave blank to match everyone.<br><b>Ordered in Batches:</b> for bulk customers who order by the roaster batch (e.g. Railway Roasters) — each unit ordered is one full green batch.<br><b>Blend recipe:</b> components with percentages; the sheet splits the blend's green weight between them.</p></div>`;
 
   if (state.ignored.length) {
     html += `<div class="card"><h2>Ignored products</h2>${state.ignored.map((p, i) => `<span class="pill" style="margin:2px">${esc(p)} <button class="link" data-unignore="${i}">×</button></span>`).join(' ')}</div>`;
@@ -560,7 +571,7 @@ function rowsToOrders(pi) {
   const fallbackCols = ['shipping company', 'billing name', 'shipping name', 'customer', 'email']
     .map(n => hNorm.indexOf(n)).filter(i => i >= 0 && i !== ci.account);
 
-  const out = []; const skipped = { noDate: 0, noProduct: 0, cancelled: 0 };
+  const out = []; const skipped = { noDate: 0, noProduct: 0, cancelled: 0, blocked: 0 };
   const orderInfo = {}; // fill-down for exports (like Shopify) that only list order details on the first line
   const seen = {};
   let lastAccount = '';  // grouped reports list the customer once, above its product rows
@@ -581,6 +592,7 @@ function rowsToOrders(pi) {
     if (info.cancelled) { skipped.cancelled++; continue; }
     const product = get(r, 'product') || get(r, 'sku');
     if (!product) { skipped.noProduct++; continue; }
+    if (isBlocked(product)) { skipped.blocked++; continue; }
     if (!date && !range) { skipped.noDate++; continue; }
     const variant = [get(r, 'variant'), get(r, 'sku')].filter(Boolean).join(' · ');
     const qty = parseFloat(get(r, 'qty').replace(',', '.')) || 0;
@@ -649,6 +661,7 @@ views.import = () => {
       </tbody></table></div>
       <p class="small">${orders.length} ${range ? 'weekly ' : ''}order lines ready.
         ${skipped.cancelled ? `${skipped.cancelled} cancelled skipped. ` : ''}
+        ${skipped.blocked ? `${skipped.blocked} “never import” lines dropped. ` : ''}
         ${skipped.noDate ? `<b>${skipped.noDate} rows had no readable date.</b> ` : ''}
         ${noBag ? `${noBag} lines had no bag size or bag word in the name and will count as ${sizeLabel(Math.round(s.defaultBagKg * 1000))} (change in Settings).` : ''}</p>
       <div class="row"><button class="btn" id="impGo" ${orders.length ? '' : 'disabled'}>Import ${orders.length} lines</button><button class="btn secondary" id="impCancel">Cancel</button></div>`;
@@ -712,6 +725,7 @@ views.settings = () => {
       <label>Show weights in <select data-set="unit"><option ${s.unit === 'lb' ? 'selected' : ''}>lb</option><option ${s.unit === 'kg' ? 'selected' : ''}>kg</option></select></label>
       <label>Bag sizes you sell <input type="text" data-set="bagSizes" value="${esc(s.bagSizes)}" placeholder="5lb, 300g"></label>
       <label>Words that mean a bag size <input type="text" data-set="bagWords" value="${esc(s.bagWords)}" placeholder="Retail = 300g"></label>
+      <label>Never import (comma-separated) <input type="text" data-set="blockWords" value="${esc(s.blockWords)}" placeholder="Brazil IPE"></label>
       <label>Bag size when not in product name (${u}) <input type="number" step="0.01" data-setw="defaultBagKg" value="${inW(s.defaultBagKg)}"></label>
       <label>Default shrink % <input type="number" step="0.5" data-set="defaultLossPct" value="${s.defaultLossPct}"></label>
       <label>Default batch size (green ${u}) <input type="number" step="0.5" data-setw="defaultBatchKg" value="${inW(s.defaultBatchKg)}"></label>
@@ -853,7 +867,7 @@ $('#view').addEventListener('change', e => {
     else if (f === 'aliases') c.aliases = splitList(t.value);
     else if (f === 'onlyFor') c.onlyFor = splitList(t.value);
     else if (f === 'name') c.name = t.value.trim() || c.name;
-    else if (['category', 'roastDay', 'recipe'].includes(f)) c[f] = t.value.trim();
+    else if (['category', 'roastDay', 'recipe', 'orderUnit'].includes(f)) c[f] = t.value.trim();
     else if (f === 'batchKg') c.batchKg = fromDisp(parseFloat(t.value) || 0);
     else c[f] = parseFloat(t.value) || 0;
     save(); return render();
@@ -876,7 +890,15 @@ $('#view').addEventListener('change', e => {
     state.pausedAccounts = t.checked ? state.pausedAccounts.filter(x => x !== a) : [...state.pausedAccounts, a];
     save(); return render();
   }
-  if (t.dataset.set) { s[t.dataset.set] = t.type === 'number' ? parseFloat(t.value) || 0 : t.value; save(); return render(); }
+  if (t.dataset.set) {
+    s[t.dataset.set] = t.type === 'number' ? parseFloat(t.value) || 0 : t.value;
+    if (t.dataset.set === 'blockWords') {
+      const before = state.orders.length;
+      state.orders = state.orders.filter(o => !isBlocked(o.product));
+      if (before > state.orders.length) toast(`Removed ${before - state.orders.length} order lines.`);
+    }
+    save(); return render();
+  }
   if (t.dataset.setw) { s[t.dataset.setw] = fromDisp(parseFloat(t.value) || 0); save(); return render(); }
   if (t.dataset.src) {
     const src = state.sources.find(x => x.id === t.dataset.src);
@@ -943,6 +965,9 @@ $('#view').addEventListener('submit', e => {
     save(); render(); toast('Order added.');
   }
 });
+
+// Drop any saved orders for products on the "never import" list.
+state.orders = state.orders.filter(o => !isBlocked(o.product));
 
 // Expose pure helpers for testing in the console.
 window.FCR = { baseName, parseCSV, parseDate, parseBagKg, sizeLabel, parseRecipe, computeForecast, mondayOf };
