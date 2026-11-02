@@ -523,6 +523,8 @@ function rowsToOrders(pi) {
   const cancelCol = hNorm.findIndex(h => h === 'cancelled at' || h === 'canceled at');
   const statusCol = hNorm.findIndex(h => h === 'status' || h === 'order status' || h === 'financial status');
   const get = (r, f) => ci[f] >= 0 ? (r[ci[f]] ?? '').trim() : '';
+  const fallbackCols = ['shipping company', 'billing name', 'shipping name', 'customer', 'email']
+    .map(n => hNorm.indexOf(n)).filter(i => i >= 0 && i !== ci.account);
 
   const out = []; const skipped = { noDate: 0, noProduct: 0, cancelled: 0 };
   const orderInfo = {}; // fill-down for exports (like Shopify) that only list order details on the first line
@@ -531,11 +533,14 @@ function rowsToOrders(pi) {
     const orderId = get(r, 'orderId');
     let date = parseDate(get(r, 'date'), state.settings.dateFormat);
     let account = get(r, 'account');
+    // If the mapped account column is blank (e.g. no company on a Shopify order), try the other customer columns.
+    for (let i = 0; !account && i < fallbackCols.length; i++) account = (r[fallbackCols[i]] || '').trim();
     const info = orderId ? (orderInfo[orderId] ||= {}) : {};
     if (date) info.date = date; else date = info.date;
     if (account) info.account = account; else account = info.account;
     if (cancelCol >= 0 && (r[cancelCol] || '').trim()) info.cancelled = true;
-    if (statusCol >= 0 && /cancel|void|refunded/i.test(r[statusCol] || '')) info.cancelled = true;
+    // Skip cancelled, voided and fully refunded orders (partially refunded ones still went out).
+    if (statusCol >= 0 && /cancel|void|^refunded$/i.test((r[statusCol] || '').trim())) info.cancelled = true;
     if (info.cancelled) { skipped.cancelled++; continue; }
     const product = get(r, 'product') || get(r, 'sku');
     if (!product) { skipped.noProduct++; continue; }
