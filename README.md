@@ -22,7 +22,7 @@ Data is saved in your browser (localStorage). Use **Settings → Download backup
    - **Batch:** green lb per batch (default 18 lb).
    - **Blend recipe:** optional, e.g. `Brazil 34, Colombia 33, Peru 33`. The sheet then shows the green lb of each component.
 2. **Orders tab:** pick a stream and upload its CSV. The file needs **one row per product line**: date, customer, product, quantity. Summary reports, such as *Sales by Customer*, can't be used because they don't say which coffees were ordered. The app warns you if you upload one. Late, special or phone orders can be added by hand as a number of bags.
-3. **Coffees tab → Products not matched:** link product names to a coffee, create a new coffee, or ignore them (merch, gift cards).
+3. **Coffees tab → Products not matched:** sizes of the same product are grouped together ("Rogue Espresso 5lb" and "Rogue Espresso Retail" become *Rogue Espresso*). For each one, link it to a coffee, create a new coffee, or ignore it (merch, filters, cleaners). You can also tick several and create them all at once.
 4. **Production tab:** pick the roast week and the look-back (2–5 weeks). Enter last week's **leftovers** and any **± adjustments**, then print or export to CSV.
 
 ## How the forecast works
@@ -45,8 +45,9 @@ Data is saved in your browser (localStorage). Use **Settings → Download backup
 ## Exports and bag sizes
 
 - **Shopify:** Orders → Export → CSV. Shopify only puts the date and customer on the first line of each order. The app copies them down to the other lines automatically. Cancelled and refunded orders are skipped. By default, Shopify counts as one account.
-- **Orderspace:** use an export with one row per order line. Any column that isn't detected can be picked by hand; the app remembers your choice.
-- **Bag size:** read from the variant or product name (`5lb`, `5 lbs`, `300g`, `12oz`, `6 x 300g`). If there's no size, the default from Settings is used (5 lb). A 300 g bag counts as its exact weight, 0.661 lb. The old spreadsheet used 0.67 lb.
+- **Orderspace:** use the **Sales By Customer By Product Variant** report. It lists each customer once, with their product lines underneath; the app carries the customer down to those lines. The report has no order dates, so on import you enter the date range you ran it for, and quantities are spread evenly across those weeks. Run it **one week at a time (Mon–Sun)** so the weighted forecast can favour recent weeks. A 4-week report also works, but then every week looks the same. Importing a range replaces earlier Orderspace lines in the same dates, so re-importing a week won't double it.
+- **Custom roasts:** if several cafés order the same product ("Custom Roast Filter/Espresso") but each gets its own roast, create one coffee per café. Give each one *Also match* = `Custom Roast` and *Only for accounts* = the café's name. Café-specific coffees take priority over general ones.
+- **Bag size:** read from the variant or product name (`5lb`, `5 lbs`, `300g`, `12oz`, `6 x 300g`). Words such as `Retail` can stand for a size: set this under Settings → *Words that mean a bag size* (default `Retail = 300g`). Add more as `word = size`, separated by commas. If there's no size, the default from Settings is used (5 lb). A 300 g bag counts as its exact weight, 0.661 lb. The old spreadsheet used 0.67 lb.
 - **Dates:** ISO dates (`2026-10-28`) always work. For dates like `11/02/2026`, choose month-first (default) or day-first in Settings.
 
 `samples/` has made-up example exports you can use to try the app.
