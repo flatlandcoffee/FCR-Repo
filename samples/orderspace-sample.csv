@@ -1,0 +1,73 @@
+Order Number,Order Date,Customer,SKU,Product,Variant,Quantity,Status
+OS-5001,21/09/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5001,21/09/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5002,21/09/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5002,21/09/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,2,Dispatched
+OS-5003,21/09/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,2,Dispatched
+OS-5003,21/09/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5004,24/09/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5004,24/09/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5005,24/09/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5005,24/09/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,2,Dispatched
+OS-5006,24/09/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5006,24/09/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5007,28/09/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5007,28/09/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5008,28/09/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5008,28/09/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
+OS-5009,28/09/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5009,28/09/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5010,01/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5010,01/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5011,01/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5011,01/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
+OS-5012,01/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5012,01/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5013,05/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5013,05/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5014,05/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5014,05/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
+OS-5015,05/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5015,05/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5016,08/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5016,08/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5017,08/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5017,08/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,2,Dispatched
+OS-5018,08/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5018,08/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5019,12/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5019,12/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5020,12/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5020,12/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
+OS-5021,12/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5021,12/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5022,15/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,4,Dispatched
+OS-5022,15/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5023,15/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5023,15/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,2,Dispatched
+OS-5024,15/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5024,15/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5025,19/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5025,19/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5026,19/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5026,19/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
+OS-5027,19/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5027,19/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5028,22/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5028,22/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,2,Dispatched
+OS-5029,22/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5029,22/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
+OS-5030,22/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5030,22/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5031,26/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,4,Dispatched
+OS-5031,26/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5032,26/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
+OS-5032,26/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
+OS-5033,26/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5033,26/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5034,29/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,4,Dispatched
+OS-5034,29/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
+OS-5035,29/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
+OS-5035,29/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
+OS-5036,29/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
+OS-5036,29/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
