@@ -388,8 +388,8 @@ views.production = () => {
       </label>
       ${usedDays.length ? `<label>Roast day <select id="dayFilter"><option value="">All days</option>${usedDays.map(d => `<option ${d === dayFilter ? 'selected' : ''}>${d}</option>`).join('')}</select></label>` : ''}
       <button class="btn secondary" id="clearAdj">Clear adjust &amp; leftovers</button>
-      <button class="btn secondary" id="exportSheet">Export CSV</button>
-      <button class="btn" id="printSheet">Print</button>
+      <button class="btn secondary" id="exportSheet">${framed ? 'Copy as CSV' : 'Export CSV'}</button>
+      ${framed ? '' : '<button class="btn" id="printSheet">Print</button>'}
     </div>
     <p class="small muted" style="margin:10px 0 0">Forecast from orders ${weeksDesc}, plus orders already placed for this week. Tap a coffee to see each account.</p>
   </div>
@@ -761,8 +761,8 @@ views.settings = () => {
     <div class="card"><h2>Backup</h2>
       <p class="small muted">Data is stored in this browser only. Download a backup to move it to another computer.</p>
       <div class="row">
-        <button class="btn secondary" id="backup">Download backup</button>
-        <label>Restore from backup <input type="file" id="restore" accept=".json,application/json"></label>
+        <button class="btn secondary" id="backup">${framed ? 'Copy backup' : 'Download backup'}</button>
+        <label>Restore from backup (replaces everything here) <input type="file" id="restore" accept=".json,application/json"></label>
         <button class="btn danger" id="pruneOld">Delete orders older than 12 weeks</button>
       </div>
     </div>`;
@@ -788,12 +788,28 @@ function addCoffee(name, extra = {}) {
 }
 const splitList = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
 
+// Inside an embedded preview (iframe), printing and file downloads are blocked, so copy to the clipboard instead.
+const framed = (() => { try { return window.self !== window.top; } catch { return true; } })();
 function download(name, text, type) {
+  if (framed) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast('Copied — paste it into a spreadsheet or a text file.'))
+      .catch(() => toast('Copying was blocked here. Open the app from its own page to download.'));
+    return;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type }));
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+// Two-tap confirm without pop-up dialogs: the first tap arms the button, the second does it.
+function confirmTap(btn, label = 'Tap again to confirm') {
+  if (btn.dataset.armed) return true;
+  btn.dataset.armed = '1'; const old = btn.textContent; btn.textContent = label;
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = old; } }, 4000);
+  return false;
+}
+let nextRange = null; // after importing a dated-less weekly report, the next one defaults to the week before
 const csvCell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
 
 $('#view').addEventListener('click', e => {
@@ -819,7 +835,7 @@ $('#view').addEventListener('click', e => {
   }
   if (t.dataset.delcoffee) {
     const c = state.coffees.find(c => c.id === t.dataset.delcoffee);
-    if (c && confirm(`Delete ${c.name}? Orders stay; they'll show as unmatched.`)) {
+    if (c && confirmTap(t, 'Tap again to delete')) {
       state.coffees = state.coffees.filter(x => x !== c); save(); render();
     }
     return;
@@ -840,6 +856,7 @@ $('#view').addEventListener('click', e => {
     const { orders, range } = rowsToOrders(pendingImport);
     state.mappings[pendingImport.sourceId] = pendingImport.map;
     if (range) {
+      nextRange = { from: addDays(range.from, -7), to: addDays(range.to, -7) };
       const sid = pendingImport.sourceId;
       state.orders = state.orders.filter(o => !(o.source === sid && o.date >= range.from && o.date <= range.to));
     }
@@ -848,17 +865,18 @@ $('#view').addEventListener('click', e => {
     for (const o of orders) { byKey.has(o.key) ? replaced++ : added++; byKey.set(o.key, o); }
     state.orders = [...byKey.values()];
     pendingImport = null; save(); render();
-    return toast(`Imported ${added} new lines${replaced ? `, updated ${replaced}` : ''}.`);
+    return toast(`Imported ${added} new lines${replaced ? `, updated ${replaced}` : ''}${range ? ` for ${fmtDate(range.from)} – ${fmtDate(range.to)}` : ''}.`);
   }
   if (t.dataset.clearsrc) {
     const src = state.sources.find(s => s.id === t.dataset.clearsrc);
-    if (confirm(`Delete all ${src.name} orders?`)) { state.orders = state.orders.filter(o => o.source !== src.id); save(); render(); }
+    if (confirmTap(t, 'Tap again to clear')) { state.orders = state.orders.filter(o => o.source !== src.id); save(); render(); }
     return;
   }
   if (t.id === 'addSrc') { state.sources.push({ id: uid(), name: 'New stream', singleAccount: false, mode: 'forecast' }); save(); return render(); }
   if (t.dataset.delsrc) { state.sources = state.sources.filter(x => x.id !== t.dataset.delsrc); save(); return render(); }
   if (t.id === 'backup') return download(`roast-planner-backup-${todayIso()}.json`, JSON.stringify(state, null, 1), 'application/json');
   if (t.id === 'pruneOld') {
+    if (!confirmTap(t)) return;
     const cutoff = addDays(todayIso(), -84);
     const before = state.orders.length;
     state.orders = state.orders.filter(o => o.date >= cutoff);
@@ -891,8 +909,7 @@ $('#view').addEventListener('change', e => {
     const product = t.dataset.assign, v = t.value;
     if (v === '__ignore') state.ignored.push(baseName(product));
     else if (v === '__new') {
-      const name = prompt('Coffee name', baseName(product));
-      if (!name) return render();
+      const name = baseName(product); // rename it in the coffees table if needed
       const c = addCoffee(name);
       if (!c) { toast('That coffee already exists.'); return render(); }
       if (!norm(product).includes(norm(name))) c.aliases.push(baseName(product));
@@ -939,8 +956,9 @@ $('#view').addEventListener('change', e => {
       if (all.length < 2) return toast('That file looks empty.');
       const { headers, rows, title } = splitHeader(all);
       const tw = targetWeek();
+      // Reports without dates default to the last full week, then step back a week after each import.
       pendingImport = { fileName: file.name, title, headers, rows, sourceId, map: guessMapping(headers, sourceId),
-        range: { from: addDays(tw, -7 * state.settings.lookbackWeeks), to: addDays(tw, -1) } };
+        range: nextRange ? { ...nextRange } : { from: addDays(tw, -7), to: addDays(tw, -1) } };
       render();
     });
     return;
@@ -950,7 +968,6 @@ $('#view').addEventListener('change', e => {
       try {
         const s = JSON.parse(text);
         if (!Array.isArray(s.coffees) || !Array.isArray(s.orders)) throw new Error();
-        if (!confirm('Replace everything in this browser with the backup?')) return;
         localStorage.setItem(STORE_KEY, text); state = load(); render(); toast('Backup restored.');
       } catch { toast('That is not a valid backup file.'); }
     });
