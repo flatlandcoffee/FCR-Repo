@@ -1,5 +1,7 @@
 # Roast Production Planner
 
+> **Recommended: the automatic Google Sheets version.** It pulls orders from Orderspace and Shopify every Monday and fills in the roast plan. See [`google-sheets/SETUP.md`](google-sheets/SETUP.md). The browser app described below is the manual version, where you upload CSV files yourself.
+
 A simple browser app that turns your recent roast orders into a weekly production sheet.
 
 It looks at the last **2–5 weeks** of orders for each account and predicts how much of each coffee to roast next week. Orders can come from **Orderspace**, **Shopify** and a **third stream** (a CSV, or orders typed in by hand).
