@@ -1,14 +1,24 @@
 /* Roast Production Planner
  * Single-page app. All data lives in this browser (localStorage).
  * Use Settings → Backup to move data between devices.
+ * Weights are stored in kg internally and shown in the unit picked in Settings.
  */
 (() => {
 'use strict';
 
 const STORE_KEY = 'fcr-production-v1';
 const DAY = 86400000;
+const LB = 0.45359237;
 
 // ---------- State ----------
+
+const DEFAULT_SOURCES = [
+  { id: 'orderspace', name: 'Wholesale – Orderspace', singleAccount: false, mode: 'forecast' },
+  { id: 'custom', name: 'Custom label / roast', singleAccount: false, mode: 'forecast' },
+  { id: 'shopify', name: 'Online / in-store pickup', singleAccount: true, mode: 'forecast' },
+  { id: 'other', name: 'Other / misc / late order', singleAccount: false, mode: 'actual' },
+  { id: 'special', name: 'Special order', singleAccount: false, mode: 'actual' },
+];
 
 const defaultState = () => ({
   coffees: [],
@@ -16,39 +26,40 @@ const defaultState = () => ({
   ignored: [],          // product names to skip (merch, gift cards, etc.)
   pausedAccounts: [],   // accounts left out of the forecast
   adjustments: {},      // coffeeId -> extra roasted kg for the week
-  sources: [
-    { id: 'orderspace', name: 'Orderspace', singleAccount: false },
-    { id: 'shopify', name: 'Shopify', singleAccount: true },
-    { id: 'stream3', name: 'Stream 3', singleAccount: false },
-  ],
+  leftovers: {},        // coffeeId -> roasted kg on hand from last week
+  sources: DEFAULT_SOURCES.map(s => ({ ...s })),
   mappings: {},         // sourceId -> last used column mapping
   settings: {
     lookbackWeeks: 4,
     method: 'weighted',
-    defaultBagKg: 1,
-    defaultLossPct: 15,
-    defaultBatchKg: 12,
-    dateFormat: 'DMY',
-    unit: 'kg',
+    defaultBagKg: 5 * LB,
+    bagSizes: '5lb, 300g',
+    defaultLossPct: 15,     // green = roasted × (1 + this %)
+    defaultBatchKg: 18 * LB,
+    dateFormat: 'MDY',
+    unit: 'lb',
     targetWeek: '',
+    roastDayFilter: '',
   },
 });
 
 let state = load();
 let currentTab = 'production';
-let pendingImport = null; // parsed CSV waiting for mapping confirmation
+let pendingImport = null; // parsed CSV waiting for column matching
 const expanded = new Set();
 
 function load() {
+  const d = defaultState();
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      const d = defaultState();
-      return { ...d, ...s, settings: { ...d.settings, ...(s.settings || {}) } };
+      const st = { ...d, ...s, settings: { ...d.settings, ...(s.settings || {}) } };
+      st.sources = (st.sources || d.sources).map(x => ({ mode: 'forecast', ...x }));
+      return st;
     }
   } catch (e) { /* fall through */ }
-  return defaultState();
+  return d;
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -62,6 +73,7 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const norm = s => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+const ROAST_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function toast(msg) {
   const t = $('#toast');
@@ -69,11 +81,23 @@ function toast(msg) {
   clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; }, 3500);
 }
 
-function fmtW(kg, digits = 1) {
-  const v = state.settings.unit === 'lb' ? kg * 2.20462 : kg;
-  return v.toFixed(digits);
-}
+// Unit conversion between stored kg and the display unit.
+const isLb = () => state.settings.unit === 'lb';
+const toDisp = kg => isLb() ? kg / LB : kg;
+const fromDisp = v => isLb() ? v * LB : v;
+const fmtW = (kg, digits = 2) => toDisp(kg).toFixed(digits);
+const inW = kg => kg ? +toDisp(kg).toFixed(2) : '';
 const unitLabel = () => state.settings.unit;
+
+// Label a bag size given in grams: "5 lb", "1 kg", "12 oz", "300 g".
+function sizeLabel(g) {
+  const lb = g / 453.592;
+  if (g >= 450 && Math.abs(lb - Math.round(lb * 4) / 4) < 0.01) return `${+(Math.round(lb * 4) / 4)} lb`;
+  if (g >= 1000 && g % 1000 === 0) return `${g / 1000} kg`;
+  const oz = g / 28.3495;
+  if (g < 450 && g % 50 !== 0 && Math.abs(oz - Math.round(oz)) < 0.02) return `${Math.round(oz)} oz`;
+  return `${g} g`;
+}
 
 // Dates are handled as 'YYYY-MM-DD' strings, computed in UTC to dodge DST.
 const isoToMs = iso => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10));
@@ -89,8 +113,7 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 function fmtDate(iso) {
-  const d = new Date(isoToMs(iso));
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return new Date(isoToMs(iso)).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
 function parseDate(raw, fmt) {
@@ -118,28 +141,30 @@ function parseDate(raw, fmt) {
   return null;
 }
 
-// Finds a bag size in text like "1kg", "250 g", "5lb", "6 x 250g".
+// Finds a bag size in text like "5lb", "5lbs", "300g", "12 oz", "6 x 300g". Returns kg.
 function parseBagKg(text) {
-  const s = String(text ?? '').toLowerCase().replace(',', '.');
-  const unit = '(kg|kgs|kilo|kilos|g|gr|grams?|lb|lbs|pounds?|oz)';
+  const s = String(text ?? '').toLowerCase().replace(/(\d),(\d)/g, '$1.$2');
+  const unit = '(kg|kgs|kilos?|g|gr|grams?|lb|lbs|#|pounds?|oz)';
   const toKg = (n, u) => {
     if (/^k/.test(u)) return n;
     if (/^g/.test(u)) return n / 1000;
-    if (/^(lb|pound)/.test(u)) return n * 0.453592;
+    if (/^(lb|pound|#)/.test(u)) return n * LB;
     if (u === 'oz') return n * 0.0283495;
     return null;
   };
-  let m = s.match(new RegExp(`(\\d+)\\s*[x×]\\s*(\\d+(?:\\.\\d+)?)\\s*${unit}\\b`));
+  let m = s.match(new RegExp(`(\\d+)\\s*[x×]\\s*(\\d+(?:\\.\\d+)?)\\s*${unit}(?![a-z])`));
   if (m) return +m[1] * toKg(+m[2], m[3]);
-  m = s.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${unit}\\b`));
+  m = s.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${unit}(?![a-z])`));
   if (m) return toKg(+m[1], m[2]);
   return null;
 }
+const bagSizeList = () => String(state.settings.bagSizes).split(',').map(parseBagKg).filter(x => x > 0);
 
 // RFC 4180 CSV parser (handles quotes, commas and newlines inside quotes).
 function parseCSV(text) {
   text = text.replace(/^﻿/, '');
-  const delim = (text.split('\n')[0].match(/;/g) || []).length > (text.split('\n')[0].match(/,/g) || []).length ? ';' : ',';
+  const first = text.split('\n')[0];
+  const delim = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
   const rows = []; let row = []; let field = ''; let q = false;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
@@ -168,9 +193,21 @@ function matchCoffee(productText) {
   }
   return best;
 }
-// "Ethiopia Guji - 250g / Whole Bean" -> "Ethiopia Guji"
-const baseName = product => String(product).replace(/\s*[-–|]\s*\d.*$/, '').trim() || String(product);
+// "Ethiopia Guji - 300g / Whole Bean" -> "Ethiopia Guji"
+const baseName = product => String(product).replace(/\s*[-–|/]\s*\d.*$/, '').trim() || String(product);
 const isIgnored = product => state.ignored.some(i => norm(product).includes(norm(i)));
+const categoryOf = c => (c.category || '').trim() || 'Uncategorized';
+const categories = () => [...new Set(state.coffees.map(categoryOf))];
+
+// "Brazil 40, Colombia 30, Ethiopia 30" -> [{name, pct}]
+function parseRecipe(text) {
+  const parts = String(text || '').split(',').map(p => p.trim()).filter(Boolean).map(p => {
+    const m = p.match(/^(.*?)[\s:=]+(\d+(?:\.\d+)?)\s*%?$/);
+    return m ? { name: m[1].trim(), pct: +m[2] } : { name: p, pct: 1 };
+  });
+  const total = parts.reduce((s, p) => s + p.pct, 0);
+  return total > 0 ? parts.map(p => ({ ...p, share: p.pct / total })) : [];
+}
 
 // ---------- Forecast ----------
 
@@ -181,73 +218,110 @@ function targetWeek() {
   return mon === t ? t : addDays(mon, 7); // the coming Monday
 }
 
+/*
+ * For each account × coffee × bag size:
+ *   forecast = weighted (or plain) average of weekly bag counts over the look-back weeks
+ *   confirmed = bags already ordered for the roast week
+ * "Forecast" sources use the larger of the two; "this week only" sources use confirmed only.
+ * Bags per coffee are rounded to whole bags, and roasted weight comes from those bags.
+ */
 function computeForecast() {
-  const N = +state.settings.lookbackWeeks;
+  const s = state.settings;
+  const N = +s.lookbackWeeks;
   const target = targetWeek();
   const weeks = []; // index 0 = most recent full week
   for (let i = 1; i <= N; i++) weeks.push(addDays(target, -7 * i));
   const weekIdx = Object.fromEntries(weeks.map((w, i) => [w, i]));
-  const weights = weeks.map((_, i) => state.settings.method === 'weighted' ? N - i : 1);
+  const weights = weeks.map((_, i) => s.method === 'weighted' ? N - i : 1);
   const wSum = weights.reduce((a, b) => a + b, 0);
-
-  const byCoffee = {}; // coffeeId -> { accounts: {name: hist[]} }
-  const unmatched = {}; // product -> { kg, lines }
+  const srcById = Object.fromEntries(state.sources.map(x => [x.id, x]));
   const paused = new Set(state.pausedAccounts);
 
+  const lines = {};     // coffeeId -> key -> { account, source, sizes: {g: {hist, confirmed}} }
+  const unmatched = {}; // product -> lines
   for (const o of state.orders) {
-    const wk = weekIdx[mondayOf(o.date)];
-    if (wk === undefined) continue;
-    if (paused.has(o.account)) continue;
-    if (isIgnored(o.product)) continue;
+    const wkStart = mondayOf(o.date);
+    const isTarget = wkStart === target;
+    const wk = weekIdx[wkStart];
+    if (!isTarget && wk === undefined) continue;
+    if (paused.has(o.account) || isIgnored(o.product)) continue;
     const coffee = matchCoffee(o.product + ' ' + (o.variant || ''));
-    const kg = o.qty * (o.bagKg ?? state.settings.defaultBagKg);
-    if (!coffee) {
-      const u = unmatched[o.product] ||= { kg: 0, lines: 0 };
-      u.kg += kg; u.lines++;
-      continue;
-    }
+    if (!coffee) { unmatched[o.product] = (unmatched[o.product] || 0) + 1; continue; }
     if (coffee.active === false) continue;
-    const c = byCoffee[coffee.id] ||= { accounts: {} };
-    const hist = c.accounts[o.account] ||= new Array(N).fill(0);
-    hist[wk] += kg;
+    const src = srcById[o.source] || { id: o.source, name: o.source, mode: 'forecast' };
+    if (!isTarget && src.mode === 'actual') continue;
+    const g = Math.round((o.bagKg ?? s.defaultBagKg) * 1000);
+    const byKey = lines[coffee.id] ||= {};
+    const line = byKey[o.account + '|' + src.id] ||= { account: o.account, source: src, sizes: {} };
+    const sz = line.sizes[g] ||= { hist: new Array(N).fill(0), confirmed: 0 };
+    if (isTarget) sz.confirmed += o.qty; else sz.hist[wk] += o.qty;
   }
 
+  const allSizes = new Set();
   const rows = state.coffees.filter(c => c.active !== false).map(coffee => {
-    const accounts = Object.entries(byCoffee[coffee.id]?.accounts || {}).map(([name, hist]) => {
-      const forecast = hist.reduce((s, kg, i) => s + kg * weights[i], 0) / wSum;
-      return { name, hist, forecast };
-    }).sort((a, b) => b.forecast - a.forecast);
-    const forecast = accounts.reduce((s, a) => s + a.forecast, 0);
-    const hist = weeks.map((_, i) => accounts.reduce((s, a) => s + a.hist[i], 0));
-    const adj = +(state.adjustments[coffee.id] || 0);
-    const roasted = Math.max(0, forecast + adj);
-    const loss = (coffee.lossPct ?? state.settings.defaultLossPct) / 100;
-    const green = roasted / (1 - loss);
-    const batchKg = +(coffee.batchKg || state.settings.defaultBatchKg);
-    const batches = batchKg > 0 ? green / batchKg : 0;
-    return { coffee, accounts, forecast, hist, adj, roasted, green, batches, batchKg };
-  }).sort((a, b) => b.roasted - a.roasted);
+    const units = {};   // g -> forecast bags (unrounded)
+    const bySource = {}; // sourceId -> { name, units: {g: n} }
+    const hist = new Array(N).fill(0); // kg per week, for the trend arrow
+    const accounts = Object.values(lines[coffee.id] || {}).map(l => {
+      const sizes = {};
+      let kg = 0, confirmedAny = false;
+      for (const [g, sz] of Object.entries(l.sizes)) {
+        const fc = sz.hist.reduce((a, n, i) => a + n * weights[i], 0) / wSum;
+        const use = l.source.mode === 'actual' ? sz.confirmed : Math.max(fc, sz.confirmed);
+        if (sz.confirmed > 0 && sz.confirmed >= fc) confirmedAny = true;
+        sizes[g] = use; kg += use * g / 1000;
+        units[g] = (units[g] || 0) + use;
+        const bs = bySource[l.source.id] ||= { name: l.source.name, units: {} };
+        bs.units[g] = (bs.units[g] || 0) + use;
+        sz.hist.forEach((n, i) => { hist[i] += n * g / 1000; });
+      }
+      const histKg = new Array(N).fill(0);
+      for (const [g, sz] of Object.entries(l.sizes)) sz.hist.forEach((n, i) => { histKg[i] += n * g / 1000; });
+      return { name: l.account, source: l.source, sizes, kg, histKg, confirmedAny };
+    }).filter(a => a.kg > 0).sort((a, b) => b.kg - a.kg);
 
-  return { target, weeks, rows, unmatched };
+    const bags = {};
+    for (const [g, n] of Object.entries(units)) { const b = Math.round(n); if (b > 0) { bags[g] = b; allSizes.add(+g); } }
+    const bagKg = Object.entries(bags).reduce((a, [g, n]) => a + n * g / 1000, 0);
+    const adj = +(state.adjustments[coffee.id] || 0);
+    const leftover = +(state.leftovers[coffee.id] || 0);
+    const roasted = Math.max(0, bagKg + adj - leftover);
+    const shrink = (coffee.lossPct ?? s.defaultLossPct) / 100;
+    const green = roasted * (1 + shrink);
+    const batchKg = +(coffee.batchKg || s.defaultBatchKg);
+    const batches = batchKg > 0 ? green / batchKg : 0;
+    return { coffee, accounts, bySource, bags, bagKg, hist, adj, leftover, roasted, green, batches, batchKg };
+  });
+
+  const sizes = [...allSizes].sort((a, b) => b - a);
+  return { target, weeks, rows, sizes, unmatched };
 }
 
 // ---------- Views ----------
 
 const views = {};
+const ceilB = b => Math.ceil(b - 1e-9);
 
 views.production = () => {
   const f = computeForecast();
   const s = state.settings;
+  const dayFilter = s.roastDayFilter;
+  const rows = f.rows.filter(r => !dayFilter || r.coffee.roastDay === dayFilter);
   const unmatchedCount = Object.keys(f.unmatched).length;
-  const tot = f.rows.reduce((a, r) => ({ roasted: a.roasted + r.roasted, green: a.green + r.green, batches: a.batches + Math.ceil(r.batches - 1e-9) }), { roasted: 0, green: 0, batches: 0 });
+  const sum = (rs, k) => rs.reduce((a, r) => a + r[k], 0);
+  const bagTotals = {};
+  for (const r of rows) for (const [g, n] of Object.entries(r.bags)) bagTotals[g] = (bagTotals[g] || 0) + n;
+  const totBatches = rows.reduce((a, r) => a + r.batches, 0);
   const weeksDesc = `${fmtDate(f.weeks[f.weeks.length - 1])} – ${fmtDate(addDays(f.weeks[0], 6))}`;
+  const usedDays = ROAST_DAYS.filter(d => state.coffees.some(c => c.roastDay === d));
+  const u = unitLabel();
 
   let html = '';
   if (!state.coffees.length) {
     html += `<div class="notice">Start by adding your coffees on the <button class="link" data-goto="coffees">Coffees</button> tab, then import orders on the <button class="link" data-goto="import">Orders</button> tab.</div>`;
   }
   if (unmatchedCount) {
-    html += `<div class="notice"><b>${unmatchedCount} product${unmatchedCount > 1 ? 's' : ''}</b> in this window didn't match a coffee and are left out. <button class="link" data-goto="coffees">Match them →</button></div>`;
+    html += `<div class="notice"><b>${unmatchedCount} product${unmatchedCount > 1 ? 's' : ''}</b> in these weeks didn't match a coffee and are left out. <button class="link" data-goto="coffees">Match them →</button></div>`;
   }
   html += `
   <div class="card no-print">
@@ -262,104 +336,149 @@ views.production = () => {
           <option value="avg" ${s.method === 'avg' ? 'selected' : ''}>Straight average</option>
         </select>
       </label>
-      <button class="btn secondary" id="clearAdj">Clear adjustments</button>
+      ${usedDays.length ? `<label>Roast day <select id="dayFilter"><option value="">All days</option>${usedDays.map(d => `<option ${d === dayFilter ? 'selected' : ''}>${d}</option>`).join('')}</select></label>` : ''}
+      <button class="btn secondary" id="clearAdj">Clear adjust &amp; leftovers</button>
       <button class="btn secondary" id="exportSheet">Export CSV</button>
       <button class="btn" id="printSheet">Print</button>
     </div>
-    <p class="small muted" style="margin:10px 0 0">Based on orders from ${weeksDesc}. Tap a coffee to see each account.</p>
+    <p class="small muted" style="margin:10px 0 0">Forecast from orders ${weeksDesc}, plus orders already placed for this week. Tap a coffee to see each account.</p>
   </div>
-  <div class="only-print"><h2>Production sheet — week of ${fmtDate(f.target)}</h2><p class="small">Forecast from ${s.lookbackWeeks} weeks (${weeksDesc}), ${s.method === 'weighted' ? 'weighted' : 'average'}.</p></div>
+  <div class="only-print"><h2>Roast plan — week of ${fmtDate(f.target)}${dayFilter ? ` (${dayFilter})` : ''}</h2><p class="small">Forecast from ${s.lookbackWeeks} weeks (${weeksDesc}), ${s.method === 'weighted' ? 'weighted' : 'average'}.</p></div>
   <div class="stats">
-    <div class="stat"><b>${fmtW(tot.roasted)}</b><span>Roasted ${unitLabel()} needed</span></div>
-    <div class="stat"><b>${fmtW(tot.green)}</b><span>Green ${unitLabel()} to pull</span></div>
-    <div class="stat"><b>${tot.batches}</b><span>Batches</span></div>
-  </div>
-  <div class="card"><div class="table-wrap"><table>
+    <div class="stat"><b>${fmtW(sum(rows, 'roasted'))}</b><span>Total roasted ${u}</span></div>
+    <div class="stat"><b>${fmtW(sum(rows, 'green'))}</b><span>Green ${u} to pull</span></div>
+    <div class="stat"><b>${totBatches.toFixed(2)}</b><span>Batches (${rows.reduce((a, r) => a + ceilB(r.batches), 0)} rounded up)</span></div>
+    ${f.sizes.map(g => `<div class="stat"><b>${bagTotals[g] || 0}</b><span>${sizeLabel(g)} bags</span></div>`).join('')}
+  </div>`;
+
+  const cols = 8 + f.sizes.length;
+  html += `<div class="card"><div class="table-wrap"><table class="sheet">
     <thead><tr>
-      <th>Coffee</th>
-      ${f.weeks.slice().reverse().map(w => `<th class="num">${fmtDate(w)}</th>`).join('')}
-      <th class="num">Forecast</th><th class="num">Adjust ±</th>
-      <th class="num">Roasted</th><th class="num">Green</th><th class="num">Batches</th>
+      <th>Coffee</th><th>Day</th>
+      ${f.sizes.map(g => `<th class="num">${sizeLabel(g)}</th>`).join('')}
+      <th class="num">Bags ${u}</th><th class="num">Adjust ±</th><th class="num">Leftover</th>
+      <th class="num">Roast ${u}</th><th class="num">Green ${u}</th><th class="num">Batches</th>
     </tr></thead><tbody>`;
-  for (const r of f.rows) {
-    const open = expanded.has(r.coffee.id);
-    const last = r.hist[0], avg = r.hist.reduce((a, b) => a + b, 0) / r.hist.length;
-    const trend = avg > 0 && last > avg * 1.15 ? '<span class="up">▲</span>' : avg > 0 && last < avg * 0.85 ? '<span class="down">▼</span>' : '';
-    html += `<tr class="clickable" data-toggle="${r.coffee.id}">
-      <td><b>${open ? '▾' : '▸'} ${esc(r.coffee.name)}</b> ${trend} <span class="small muted">${r.accounts.length} acct</span></td>
-      ${r.hist.slice().reverse().map(kg => `<td class="num">${kg ? fmtW(kg) : '–'}</td>`).join('')}
-      <td class="num">${fmtW(r.forecast)}</td>
-      <td class="num"><input type="number" step="0.5" class="adj" data-adj="${r.coffee.id}" value="${r.adj || ''}" placeholder="0"></td>
-      <td class="num big">${fmtW(r.roasted)}</td>
-      <td class="num">${fmtW(r.green)}</td>
-      <td class="num"><b>${Math.ceil(r.batches - 1e-9)}</b> <span class="small muted">(${r.batches.toFixed(1)} × ${fmtW(r.batchKg, 0)})</span></td>
-    </tr>`;
-    if (open) {
-      for (const a of r.accounts) {
-        html += `<tr class="sub"><td>${esc(a.name)}</td>${a.hist.slice().reverse().map(kg => `<td class="num">${kg ? fmtW(kg) : '–'}</td>`).join('')}<td class="num">${fmtW(a.forecast)}</td><td colspan="4"></td></tr>`;
+  for (const cat of categories()) {
+    const cr = rows.filter(r => categoryOf(r.coffee) === cat);
+    if (!cr.length) continue;
+    html += `<tr class="cat"><td colspan="${cols}">${esc(cat)}</td></tr>`;
+    for (const r of cr) {
+      const open = expanded.has(r.coffee.id);
+      const last = r.hist[0], avg = r.hist.reduce((a, b) => a + b, 0) / (r.hist.length || 1);
+      const trend = avg > 0 && last > avg * 1.15 ? '<span class="up" title="Last week above average">▲</span>' : avg > 0 && last < avg * 0.85 ? '<span class="down" title="Last week below average">▼</span>' : '';
+      html += `<tr class="clickable" data-toggle="${r.coffee.id}">
+        <td><b>${open ? '▾' : '▸'} ${esc(r.coffee.name)}</b> ${trend}</td>
+        <td class="small">${esc(r.coffee.roastDay || '')}</td>
+        ${f.sizes.map(g => `<td class="num">${r.bags[g] || '<span class="muted">–</span>'}</td>`).join('')}
+        <td class="num">${r.bagKg ? fmtW(r.bagKg) : '<span class="muted">–</span>'}</td>
+        <td class="num"><input type="number" step="0.5" class="adj" data-adj="${r.coffee.id}" value="${inW(r.adj)}" placeholder="0"></td>
+        <td class="num"><input type="number" step="0.5" min="0" class="adj" data-left="${r.coffee.id}" value="${inW(r.leftover)}" placeholder="0"></td>
+        <td class="num big">${fmtW(r.roasted)}</td>
+        <td class="num">${fmtW(r.green)}</td>
+        <td class="num"><b>${r.batches.toFixed(2)}</b></td>
+      </tr>`;
+      if (open) {
+        for (const [, bs] of Object.entries(r.bySource)) {
+          html += `<tr class="sub src"><td colspan="2">${esc(bs.name)}</td>${f.sizes.map(g => `<td class="num">${bs.units[g] ? bs.units[g].toFixed(1) : ''}</td>`).join('')}<td colspan="6"></td></tr>`;
+          for (const a of r.accounts.filter(a => a.source.name === bs.name)) {
+            const hist = a.histKg.slice().reverse().map(k => k ? fmtW(k, 1) : '0').join(' · ');
+            html += `<tr class="sub"><td colspan="2">${esc(a.name)}${a.confirmedAny ? ' <span class="pill">ordered</span>' : ''}<div class="small muted">last weeks (${u}): ${hist}</div></td>
+              ${f.sizes.map(g => `<td class="num">${a.sizes[g] ? a.sizes[g].toFixed(1) : ''}</td>`).join('')}<td class="num">${fmtW(a.kg)}</td><td colspan="5"></td></tr>`;
+          }
+        }
+        if (!r.accounts.length) html += `<tr class="sub"><td colspan="${cols}">No orders in these weeks.</td></tr>`;
+        if (r.green > 0) html += `<tr class="sub"><td colspan="${cols}">Green ${fmtW(r.green)} = roast ${fmtW(r.roasted)} × ${(1 + (r.coffee.lossPct ?? s.defaultLossPct) / 100).toFixed(2)} · batches = green ÷ ${fmtW(r.batchKg, 1)} ${u}</td></tr>`;
       }
-      if (!r.accounts.length) html += `<tr class="sub"><td colspan="${f.weeks.length + 6}">No orders in this window.</td></tr>`;
+    }
+    if (categories().length > 1) {
+      html += `<tr class="subtotal"><td colspan="2">${esc(cat)} total</td>${f.sizes.map(g => `<td class="num">${cr.reduce((a, r) => a + (r.bags[g] || 0), 0) || ''}</td>`).join('')}
+        <td class="num">${fmtW(sum(cr, 'bagKg'))}</td><td></td><td></td><td class="num">${fmtW(sum(cr, 'roasted'))}</td><td class="num">${fmtW(sum(cr, 'green'))}</td><td class="num">${cr.reduce((a, r) => a + r.batches, 0).toFixed(2)}</td></tr>`;
     }
   }
-  html += `<tr class="total"><td>Total</td>${f.weeks.map(() => '<td></td>').join('')}<td></td><td></td>
-    <td class="num">${fmtW(tot.roasted)}</td><td class="num">${fmtW(tot.green)}</td><td class="num">${tot.batches}</td></tr>`;
+  html += `<tr class="total"><td colspan="2">Total</td>${f.sizes.map(g => `<td class="num">${bagTotals[g] || 0}</td>`).join('')}
+    <td class="num">${fmtW(sum(rows, 'bagKg'))}</td><td></td><td></td>
+    <td class="num">${fmtW(sum(rows, 'roasted'))}</td><td class="num">${fmtW(sum(rows, 'green'))}</td><td class="num">${totBatches.toFixed(2)}</td></tr>`;
   html += `</tbody></table></div></div>`;
+
+  // Blend components: split each blend's green weight by its recipe.
+  const blends = rows.filter(r => r.coffee.recipe && r.green > 0);
+  if (blends.length) {
+    html += `<div class="card"><h2>Blend components (green ${u})</h2><div class="table-wrap"><table><tbody>`;
+    for (const r of blends) {
+      html += `<tr class="cat"><td colspan="3">${esc(r.coffee.name)} — ${fmtW(r.green)} ${u} green</td></tr>`;
+      for (const p of parseRecipe(r.coffee.recipe)) {
+        html += `<tr><td>${esc(p.name)}</td><td class="num">${(p.share * 100).toFixed(1)}%</td><td class="num"><b>${fmtW(r.green * p.share)}</b></td></tr>`;
+      }
+    }
+    html += `</tbody></table></div></div>`;
+  }
   return html;
 };
 
 views.coffees = () => {
   const f = computeForecast();
-  // Unmatched across all orders, not just the window, so new coffees are easy to catch.
+  // Unmatched across all orders, not just the forecast weeks, so new coffees are easy to catch.
   const allUnmatched = {};
   for (const o of state.orders) {
     if (isIgnored(o.product) || matchCoffee(o.product + ' ' + (o.variant || ''))) continue;
-    const u = allUnmatched[o.product] ||= { lines: 0, last: o.date };
-    u.lines++; if (o.date > u.last) u.last = o.date;
+    const x = allUnmatched[o.product] ||= { lines: 0, last: o.date };
+    x.lines++; if (o.date > x.last) x.last = o.date;
   }
   const unmatched = Object.entries(allUnmatched).sort((a, b) => b[1].last.localeCompare(a[1].last));
   const s = state.settings;
+  const u = unitLabel();
   const coffeeOptions = state.coffees.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const dayOptions = sel => `<option value="">—</option>${ROAST_DAYS.map(d => `<option ${d === sel ? 'selected' : ''}>${d}</option>`).join('')}`;
 
   let html = `
   <div class="card">
     <h2>Add a coffee</h2>
     <form id="addCoffee" class="row">
-      <label style="flex:2 1 200px">Name <input type="text" name="name" required placeholder="e.g. Ethiopia Guji"></label>
-      <label style="flex:2 1 200px">Also match (optional, comma-separated) <input type="text" name="aliases" placeholder="e.g. guji, ETH-GUJI"></label>
-      <label>Roast loss % <input type="number" name="loss" step="0.5" value="${s.defaultLossPct}"></label>
-      <label>Batch (green ${unitLabel() === 'lb' ? 'kg' : 'kg'}) <input type="number" name="batch" step="0.5" value="${s.defaultBatchKg}"></label>
+      <label style="flex:2 1 200px">Name <input type="text" name="name" required placeholder="e.g. Rogue Espresso"></label>
+      <label style="flex:1 1 150px">Group <input type="text" name="category" list="catList" placeholder="e.g. Blends/Custom Roasts"></label>
+      <label>Roast day <select name="roastDay">${dayOptions('')}</select></label>
+      <label style="flex:2 1 200px">Also match (optional, comma-separated) <input type="text" name="aliases" placeholder="e.g. rogue, ROG-5LB"></label>
+      <label>Shrink % <input type="number" name="loss" step="0.5" value="${s.defaultLossPct}"></label>
+      <label>Batch (green ${u}) <input type="number" name="batch" step="0.5" value="${inW(s.defaultBatchKg)}"></label>
       <button class="btn" type="submit">Add</button>
     </form>
-    <p class="small muted" style="margin:10px 0 0">A coffee matches any order line whose product name or SKU contains its name or one of its match words. Bulk add: paste one name per line below.</p>
-    <details class="small"><summary>Bulk add</summary>
-      <textarea id="bulkNames" rows="5" style="width:100%;margin-top:8px" placeholder="Ethiopia Guji&#10;Colombia Huila&#10;House Espresso"></textarea>
+    <datalist id="catList">${categories().filter(c => c !== 'Uncategorized').map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+    <p class="small muted" style="margin:10px 0 0">A coffee matches any order line whose product name or SKU contains its name or one of its match words. Green = roast × (1 + shrink %).</p>
+    <details class="small"><summary>Bulk add (one per line)</summary>
+      <textarea id="bulkNames" rows="5" style="width:100%;margin-top:8px" placeholder="Swiss Water Decaf&#10;Rogue Espresso&#10;North 40 Filter"></textarea>
+      <label style="margin-top:6px">Group for these <input type="text" id="bulkCat" list="catList"></label>
       <button class="btn secondary" id="bulkAdd" style="margin-top:6px">Add all</button>
     </details>
   </div>`;
 
   if (unmatched.length) {
     html += `<div class="card"><h2>Products not matched to a coffee <span class="pill">${unmatched.length}</span></h2>
-    <p class="small muted">Pick a coffee to link it, create a new coffee from it, or ignore it (merch, gear, gift cards).</p>
+    <p class="small muted">Link each to a coffee, create a new coffee from it, or ignore it (merch, gear, gift cards).</p>
     <div class="table-wrap"><table><thead><tr><th>Product in orders</th><th class="num">Lines</th><th>Last ordered</th><th></th></tr></thead><tbody>
-    ${unmatched.map(([p, u]) => `<tr>
-      <td>${esc(p)}${f.unmatched[p] ? ' <span class="pill">in forecast window</span>' : ''}</td><td class="num">${u.lines}</td><td>${fmtDate(u.last)}</td>
-      <td><select data-assign="${esc(p)}"><option value="">Choose…</option><option value="__new">+ New coffee with this name</option>${coffeeOptions}<option value="__ignore">Ignore (not coffee)</option></select></td>
+    ${unmatched.map(([p, x]) => `<tr>
+      <td>${esc(p)}${f.unmatched[p] ? ' <span class="pill">in forecast</span>' : ''}</td><td class="num">${x.lines}</td><td>${fmtDate(x.last)}</td>
+      <td><select data-assign="${esc(p)}"><option value="">Choose…</option><option value="__new">+ New coffee</option>${coffeeOptions}<option value="__ignore">Ignore (not coffee)</option></select></td>
     </tr>`).join('')}
     </tbody></table></div></div>`;
   }
 
   html += `<div class="card"><h2>Your coffees <span class="pill">${state.coffees.length}</span></h2>
     ${state.coffees.length ? '' : '<p class="muted">No coffees yet.</p>'}
-    <div class="table-wrap"><table><thead><tr><th>Active</th><th>Name</th><th>Also match</th><th class="num">Loss %</th><th class="num">Batch kg</th><th></th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>On</th><th>Name</th><th>Group</th><th>Day</th><th>Also match</th><th class="num">Shrink %</th><th class="num">Batch ${u}</th><th>Blend recipe</th><th></th></tr></thead><tbody>
     ${state.coffees.map(c => `<tr>
       <td><input type="checkbox" data-cf="active" data-id="${c.id}" ${c.active !== false ? 'checked' : ''}></td>
-      <td><input type="text" data-cf="name" data-id="${c.id}" value="${esc(c.name)}"></td>
-      <td><input type="text" data-cf="aliases" data-id="${c.id}" value="${esc((c.aliases || []).join(', '))}" style="width:100%;min-width:180px"></td>
+      <td><input type="text" data-cf="name" data-id="${c.id}" value="${esc(c.name)}" style="min-width:150px"></td>
+      <td><input type="text" data-cf="category" data-id="${c.id}" value="${esc(c.category || '')}" list="catList" style="min-width:120px"></td>
+      <td><select data-cf="roastDay" data-id="${c.id}">${dayOptions(c.roastDay)}</select></td>
+      <td><input type="text" data-cf="aliases" data-id="${c.id}" value="${esc((c.aliases || []).join(', '))}" style="min-width:160px"></td>
       <td class="num"><input type="number" step="0.5" data-cf="lossPct" data-id="${c.id}" value="${c.lossPct}"></td>
-      <td class="num"><input type="number" step="0.5" data-cf="batchKg" data-id="${c.id}" value="${c.batchKg}"></td>
+      <td class="num"><input type="number" step="0.5" data-cf="batchKg" data-id="${c.id}" value="${inW(c.batchKg)}"></td>
+      <td><input type="text" data-cf="recipe" data-id="${c.id}" value="${esc(c.recipe || '')}" placeholder="e.g. Brazil 40, Colombia 30, Peru 30" style="min-width:200px"></td>
       <td><button class="btn danger" data-delcoffee="${c.id}">Delete</button></td>
     </tr>`).join('')}
-    </tbody></table></div></div>`;
+    </tbody></table></div>
+    <p class="small muted">Blend recipe: components with percentages. The sheet splits the blend's green weight between them.</p></div>`;
 
   if (state.ignored.length) {
     html += `<div class="card"><h2>Ignored products</h2>${state.ignored.map((p, i) => `<span class="pill" style="margin:2px">${esc(p)} <button class="link" data-unignore="${i}">×</button></span>`).join(' ')}</div>`;
@@ -372,7 +491,7 @@ const FIELD_LABELS = {
   product: 'Product name *', variant: 'Variant / options', sku: 'SKU', qty: 'Quantity *', bagKg: 'Bag weight (kg)',
 };
 const GUESS = {
-  date: ['created at', 'order date', 'date', 'created', 'placed at', 'ordered at', 'paid at', 'delivery date'],
+  date: ['created at', 'order date', 'date', 'created', 'placed at', 'ordered at', 'paid at', 'delivery date', 'dispatch date'],
   account: ['billing company', 'shipping company', 'company', 'customer company', 'customer name', 'customer', 'account', 'billing name', 'shipping name', 'email'],
   orderId: ['order number', 'order no', 'order #', 'order id', 'order', 'name', 'reference', 'number'],
   product: ['lineitem name', 'product name', 'product', 'item name', 'item', 'title', 'description'],
@@ -415,8 +534,8 @@ function rowsToOrders(pi) {
     const info = orderId ? (orderInfo[orderId] ||= {}) : {};
     if (date) info.date = date; else date = info.date;
     if (account) info.account = account; else account = info.account;
-    if (cancelCol >= 0 && (r[cancelCol] || '').trim()) { info.cancelled = true; }
-    if (statusCol >= 0 && /cancel|void|refunded/i.test(r[statusCol] || '')) { info.cancelled = true; }
+    if (cancelCol >= 0 && (r[cancelCol] || '').trim()) info.cancelled = true;
+    if (statusCol >= 0 && /cancel|void|refunded/i.test(r[statusCol] || '')) info.cancelled = true;
     if (info.cancelled) { skipped.cancelled++; continue; }
     const product = get(r, 'product') || get(r, 'sku');
     if (!product) { skipped.noProduct++; continue; }
@@ -429,66 +548,77 @@ function rowsToOrders(pi) {
     if (src.singleAccount) account = src.name;
     const base = [sourceId, orderId || date, product, variant, qty].join('|');
     seen[base] = (seen[base] || 0) + 1;
-    out.push({
-      key: base + '|' + seen[base], source: sourceId, orderId, date,
-      account: account || 'Unknown', product, variant, qty, bagKg,
-    });
+    out.push({ key: base + '|' + seen[base], source: sourceId, orderId, date, account: account || 'Unknown', product, variant, qty, bagKg });
   }
   return { orders: out, skipped };
 }
 
+// Some reports start with a title line ("Sales By Customer"); use the first row with 3+ filled cells as headers.
+function splitHeader(rows) {
+  const i = Math.max(0, rows.findIndex(r => r.filter(c => c.trim()).length >= 3));
+  return { headers: rows[i].map(h => h.trim()), rows: rows.slice(i + 1), title: i > 0 ? rows[0].join(' ').trim() : '' };
+}
+
 views.import = () => {
   const s = state.settings;
+  const u = unitLabel();
   let html = `<div class="card"><h2>Import orders (CSV)</h2>
     <div class="row">
-      <label>Source <select id="impSource">${state.sources.map(src => `<option value="${src.id}">${esc(src.name)}</option>`).join('')}</select></label>
+      <label>Source <select id="impSource">${state.sources.map(src => `<option value="${src.id}" ${pendingImport?.sourceId === src.id ? 'selected' : ''}>${esc(src.name)}</option>`).join('')}</select></label>
       <label>CSV file <input type="file" id="impFile" accept=".csv,text/csv"></label>
     </div>
-    <p class="small muted" style="margin:10px 0 0">Re-importing the same export is safe — matching lines are replaced, not doubled. Export at least the last ${s.lookbackWeeks} full weeks.</p>`;
+    <p class="small muted" style="margin:10px 0 0">The file needs <b>one row per product line</b> (date, customer, product, quantity). Uploading an overlapping export again is safe — matching lines are replaced, not doubled. Include at least the last ${s.lookbackWeeks} full weeks.</p>`;
 
   if (pendingImport) {
     const pi = pendingImport;
     const { orders, skipped } = rowsToOrders(pi);
     const noBag = orders.filter(o => o.bagKg == null).length;
-    html += `<h3>Match the columns — ${esc(pi.fileName)} (${pi.rows.length} rows)</h3>
-      <div class="row">${Object.entries(FIELD_LABELS).map(([f, label]) => `
+    const summary = !pi.map.product && !pi.map.sku;
+    html += `<h3>Match the columns — ${esc(pi.fileName)}${pi.title ? ` (“${esc(pi.title)}”)` : ''}, ${pi.rows.length} rows</h3>`;
+    if (summary) {
+      html += `<div class="notice">This file has no product column — it looks like a summary report (e.g. totals per customer), so it can't tell which coffees were ordered. Export an order report with one row per product line instead. If a column does hold the product name, pick it below.</div>`;
+    }
+    html += `<div class="row">${Object.entries(FIELD_LABELS).map(([f, label]) => `
         <label>${label}<select data-map="${f}"><option value="">—</option>${pi.headers.map(h => `<option ${pi.map[f] === h ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></label>`).join('')}
       </div>
       <h3>Preview</h3>
-      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Account</th><th>Product</th><th>Variant</th><th class="num">Qty</th><th class="num">Bag kg</th><th>Coffee</th></tr></thead><tbody>
-      ${orders.slice(0, 8).map(o => { const c = matchCoffee(o.product + ' ' + o.variant); return `<tr><td>${o.date}</td><td>${esc(o.account)}</td><td>${esc(o.product)}</td><td class="small">${esc(o.variant)}</td><td class="num">${o.qty}</td><td class="num">${o.bagKg != null ? o.bagKg.toFixed(3) : `<span class="muted">${s.defaultBagKg} (default)</span>`}</td><td>${c ? esc(c.name) : isIgnored(o.product) ? '<span class="muted">ignored</span>' : '<span class="pill">no match</span>'}</td></tr>`; }).join('')}
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Account</th><th>Product</th><th>Variant</th><th class="num">Qty</th><th>Bag</th><th>Coffee</th></tr></thead><tbody>
+      ${orders.slice(0, 8).map(o => { const c = matchCoffee(o.product + ' ' + o.variant); return `<tr><td>${o.date}</td><td>${esc(o.account)}</td><td>${esc(o.product)}</td><td class="small">${esc(o.variant)}</td><td class="num">${o.qty}</td><td>${o.bagKg != null ? sizeLabel(Math.round(o.bagKg * 1000)) : `<span class="muted">${sizeLabel(Math.round(s.defaultBagKg * 1000))} (default)</span>`}</td><td>${c ? esc(c.name) : isIgnored(o.product) ? '<span class="muted">ignored</span>' : '<span class="pill">no match</span>'}</td></tr>`; }).join('')}
       </tbody></table></div>
       <p class="small">${orders.length} order lines ready.
         ${skipped.cancelled ? `${skipped.cancelled} cancelled skipped. ` : ''}
         ${skipped.noDate ? `<b>${skipped.noDate} rows had no readable date.</b> ` : ''}
-        ${noBag ? `${noBag} lines had no bag size in the name and will use the default ${s.defaultBagKg} kg (change in Settings).` : ''}</p>
+        ${noBag ? `${noBag} lines had no bag size in the name and will count as ${sizeLabel(Math.round(s.defaultBagKg * 1000))} (change in Settings).` : ''}</p>
       <div class="row"><button class="btn" id="impGo" ${orders.length ? '' : 'disabled'}>Import ${orders.length} lines</button><button class="btn secondary" id="impCancel">Cancel</button></div>`;
   }
   html += `</div>`;
 
-  // Manual entry — handy for a third stream (email/phone orders).
+  // Manual entry — for late, special or phone/email orders.
+  const firstActual = state.sources.find(x => x.mode === 'actual') || state.sources[0];
   html += `<div class="card"><h2>Add an order by hand</h2>
     <form id="manualForm" class="row">
-      <label>Source <select name="source">${state.sources.map(src => `<option value="${src.id}" ${src.id === 'stream3' ? 'selected' : ''}>${esc(src.name)}</option>`).join('')}</select></label>
-      <label>Date <input type="date" name="date" value="${todayIso()}" required></label>
+      <label>Source <select name="source">${state.sources.map(src => `<option value="${src.id}" ${src === firstActual ? 'selected' : ''}>${esc(src.name)}</option>`).join('')}</select></label>
+      <label>Date <input type="date" name="date" value="${targetWeek()}" required></label>
       <label style="flex:1 1 160px">Account <input type="text" name="account" list="acctList" required></label>
       <label>Coffee <select name="coffee" required>${state.coffees.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
-      <label>Roasted kg <input type="number" name="kg" step="0.25" min="0" required></label>
+      <label>Bag <select name="bag">${bagSizeList().map(kg => `<option value="${kg}">${sizeLabel(Math.round(kg * 1000))}</option>`).join('')}</select></label>
+      <label>Bags <input type="number" name="qty" step="1" min="1" required></label>
       <button class="btn" type="submit" ${state.coffees.length ? '' : 'disabled'}>Add</button>
     </form>
+    <p class="small muted">Orders dated in the roast week are added on top of the forecast. Sources set to "this week only" (Settings) are never averaged.</p>
     <datalist id="acctList">${[...new Set(state.orders.map(o => o.account))].sort().map(a => `<option value="${esc(a)}">`).join('')}</datalist>
   </div>`;
 
   // Coverage by source × week, so gaps are obvious.
   const t = targetWeek();
-  const weeks = []; for (let i = 6; i >= 1; i--) weeks.push(addDays(t, -7 * i));
-  html += `<div class="card"><h2>Orders loaded (roasted ${unitLabel()} per week)</h2><div class="table-wrap"><table>
-    <thead><tr><th>Source</th>${weeks.map(w => `<th class="num">${fmtDate(w)}</th>`).join('')}<th class="num">All lines</th><th></th></tr></thead><tbody>
+  const weeks = []; for (let i = 6; i >= 0; i--) weeks.push(addDays(t, -7 * i));
+  html += `<div class="card"><h2>Orders loaded (roasted ${u} per week)</h2><div class="table-wrap"><table>
+    <thead><tr><th>Source</th>${weeks.map((w, i) => `<th class="num">${i === weeks.length - 1 ? 'This wk' : fmtDate(w)}</th>`).join('')}<th class="num">Lines</th><th></th></tr></thead><tbody>
     ${state.sources.map(src => {
       const os = state.orders.filter(o => o.source === src.id);
       return `<tr><td>${esc(src.name)}</td>${weeks.map(w => {
         const kg = os.filter(o => mondayOf(o.date) === w).reduce((a, o) => a + o.qty * (o.bagKg ?? s.defaultBagKg), 0);
-        return `<td class="num">${kg ? fmtW(kg) : '<span class="muted">–</span>'}</td>`;
+        return `<td class="num">${kg ? fmtW(kg, 1) : '<span class="muted">–</span>'}</td>`;
       }).join('')}<td class="num">${os.length}</td><td>${os.length ? `<button class="btn danger" data-clearsrc="${src.id}">Clear</button>` : ''}</td></tr>`;
     }).join('')}
     </tbody></table></div></div>`;
@@ -498,38 +628,43 @@ views.import = () => {
 views.accounts = () => {
   const f = computeForecast();
   const acc = {};
-  for (const r of f.rows) for (const a of r.accounts) (acc[a.name] ||= []).push({ coffee: r.coffee.name, kg: a.forecast });
+  for (const r of f.rows) for (const a of r.accounts) (acc[a.name] ||= []).push({ coffee: r.coffee.name, kg: a.kg });
   const allAccounts = [...new Set(state.orders.map(o => o.account))].sort();
   const paused = new Set(state.pausedAccounts);
   return `<div class="card"><h2>Accounts</h2>
     <p class="small muted">Untick an account to leave it out of the forecast (closed, on hold, or a one-off big order).</p>
-    <div class="table-wrap"><table><thead><tr><th>Include</th><th>Account</th><th class="num">Forecast ${unitLabel()}/wk</th><th>Coffees</th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>Include</th><th>Account</th><th class="num">This week ${unitLabel()}</th><th>Coffees</th></tr></thead><tbody>
     ${allAccounts.map(a => {
       const lines = (acc[a] || []).sort((x, y) => y.kg - x.kg);
       const total = lines.reduce((s, l) => s + l.kg, 0);
       return `<tr><td><input type="checkbox" data-pause="${esc(a)}" ${paused.has(a) ? '' : 'checked'}></td><td>${esc(a)}</td><td class="num">${paused.has(a) ? '<span class="muted">paused</span>' : fmtW(total)}</td>
-        <td class="small">${lines.map(l => `${esc(l.coffee)} <b>${fmtW(l.kg)}</b>`).join(' · ')}</td></tr>`;
+        <td class="small">${lines.map(l => `${esc(l.coffee)} <b>${fmtW(l.kg, 1)}</b>`).join(' · ')}</td></tr>`;
     }).join('') || '<tr><td colspan="4" class="muted">No orders yet.</td></tr>'}
     </tbody></table></div></div>`;
 };
 
 views.settings = () => {
   const s = state.settings;
+  const u = unitLabel();
   return `<div class="card"><h2>Defaults</h2><div class="row">
-      <label>Bag size when not in product name (kg) <input type="number" step="0.05" data-set="defaultBagKg" value="${s.defaultBagKg}"></label>
-      <label>Default roast loss % <input type="number" step="0.5" data-set="defaultLossPct" value="${s.defaultLossPct}"></label>
-      <label>Default batch size (green kg) <input type="number" step="0.5" data-set="defaultBatchKg" value="${s.defaultBatchKg}"></label>
+      <label>Show weights in <select data-set="unit"><option ${s.unit === 'lb' ? 'selected' : ''}>lb</option><option ${s.unit === 'kg' ? 'selected' : ''}>kg</option></select></label>
+      <label>Bag sizes you sell <input type="text" data-set="bagSizes" value="${esc(s.bagSizes)}" placeholder="5lb, 300g"></label>
+      <label>Bag size when not in product name (${u}) <input type="number" step="0.01" data-setw="defaultBagKg" value="${inW(s.defaultBagKg)}"></label>
+      <label>Default shrink % <input type="number" step="0.5" data-set="defaultLossPct" value="${s.defaultLossPct}"></label>
+      <label>Default batch size (green ${u}) <input type="number" step="0.5" data-setw="defaultBatchKg" value="${inW(s.defaultBatchKg)}"></label>
       <label>Dates like 03/04/2026 mean
-        <select data-set="dateFormat"><option value="DMY" ${s.dateFormat === 'DMY' ? 'selected' : ''}>3 April (day first)</option><option value="MDY" ${s.dateFormat === 'MDY' ? 'selected' : ''}>March 4 (month first)</option></select></label>
-      <label>Show weights in <select data-set="unit"><option ${s.unit === 'kg' ? 'selected' : ''}>kg</option><option ${s.unit === 'lb' ? 'selected' : ''}>lb</option></select></label>
+        <select data-set="dateFormat"><option value="MDY" ${s.dateFormat === 'MDY' ? 'selected' : ''}>March 4 (month first)</option><option value="DMY" ${s.dateFormat === 'DMY' ? 'selected' : ''}>3 April (day first)</option></select></label>
     </div></div>
-    <div class="card"><h2>Order sources</h2>
-      <p class="small muted">"Count as one account" lumps every order from that source together — useful for retail web orders.</p>
-      <table><tbody>${state.sources.map(src => `<tr>
-        <td><input type="text" data-src="${src.id}" data-srcf="name" value="${esc(src.name)}"></td>
-        <td><label class="inline"><input type="checkbox" data-src="${src.id}" data-srcf="singleAccount" ${src.singleAccount ? 'checked' : ''}> Count as one account</label></td>
-      </tr>`).join('')}</tbody></table>
-      <p class="small muted">Changing "one account" applies to future imports; re-import to update existing orders.</p>
+    <div class="card"><h2>Order streams</h2>
+      <p class="small muted"><b>Forecast</b> streams are averaged over past weeks. <b>This week only</b> streams (late or special orders) only count orders dated in the roast week. "One account" lumps a stream together — handy for retail web orders.</p>
+      <div class="table-wrap"><table><tbody>${state.sources.map(src => `<tr>
+        <td><input type="text" data-src="${src.id}" data-srcf="name" value="${esc(src.name)}" style="min-width:180px"></td>
+        <td><select data-src="${src.id}" data-srcf="mode"><option value="forecast" ${src.mode === 'forecast' ? 'selected' : ''}>Forecast</option><option value="actual" ${src.mode === 'actual' ? 'selected' : ''}>This week only</option></select></td>
+        <td><label class="inline"><input type="checkbox" data-src="${src.id}" data-srcf="singleAccount" ${src.singleAccount ? 'checked' : ''}> One account</label></td>
+        <td>${state.orders.some(o => o.source === src.id) ? '' : `<button class="btn danger" data-delsrc="${src.id}">Remove</button>`}</td>
+      </tr>`).join('')}</tbody></table></div>
+      <button class="btn secondary" id="addSrc" style="margin-top:8px">+ Add stream</button>
+      <p class="small muted">"One account" applies to future imports; re-import to update existing orders.</p>
     </div>
     <div class="card"><h2>Backup</h2>
       <p class="small muted">Data is stored in this browser only. Download a backup to move it to another computer.</p>
@@ -551,11 +686,11 @@ function go(tab) { currentTab = tab; render(); window.scrollTo(0, 0); }
 
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) go(b.dataset.tab); });
 
-function addCoffee(name, aliases = []) {
-  name = name.trim();
+function addCoffee(name, extra = {}) {
+  name = String(name || '').trim();
   if (!name) return null;
   if (state.coffees.some(c => norm(c.name) === norm(name))) return null;
-  const c = { id: uid(), name, aliases, lossPct: +state.settings.defaultLossPct, batchKg: +state.settings.defaultBatchKg, active: true };
+  const c = { id: uid(), name, aliases: [], category: '', roastDay: '', recipe: '', lossPct: +state.settings.defaultLossPct, batchKg: +state.settings.defaultBatchKg, active: true, ...extra };
   state.coffees.push(c);
   return c;
 }
@@ -579,16 +714,16 @@ $('#view').addEventListener('click', e => {
     return render();
   }
   if (t.id === 'printSheet') return window.print();
-  if (t.id === 'clearAdj') { state.adjustments = {}; save(); return render(); }
+  if (t.id === 'clearAdj') { state.adjustments = {}; state.leftovers = {}; save(); return render(); }
   if (t.id === 'exportSheet') {
     const f = computeForecast();
     const u = unitLabel();
-    const lines = [['Coffee', 'Account', ...f.weeks.slice().reverse(), `Forecast ${u}`, `Adjust ${u}`, `Roasted ${u}`, `Green ${u}`, 'Batches', 'Batch size kg']];
+    const lines = [['Group', 'Coffee', 'Roast day', 'Stream', 'Account', ...f.sizes.map(sizeLabel), `Bags ${u}`, `Adjust ${u}`, `Leftover ${u}`, `Roast ${u}`, `Green ${u}`, 'Batches']];
     for (const r of f.rows) {
-      lines.push([r.coffee.name, 'ALL', ...r.hist.slice().reverse().map(k => fmtW(k, 2)), fmtW(r.forecast, 2), fmtW(r.adj, 2), fmtW(r.roasted, 2), fmtW(r.green, 2), Math.ceil(r.batches - 1e-9), r.batchKg]);
-      for (const a of r.accounts) lines.push([r.coffee.name, a.name, ...a.hist.slice().reverse().map(k => fmtW(k, 2)), fmtW(a.forecast, 2), '', '', '', '', '']);
+      lines.push([categoryOf(r.coffee), r.coffee.name, r.coffee.roastDay || '', 'ALL', 'ALL', ...f.sizes.map(g => r.bags[g] || 0), fmtW(r.bagKg), fmtW(r.adj), fmtW(r.leftover), fmtW(r.roasted), fmtW(r.green), r.batches.toFixed(2)]);
+      for (const a of r.accounts) lines.push([categoryOf(r.coffee), r.coffee.name, r.coffee.roastDay || '', a.source.name, a.name, ...f.sizes.map(g => a.sizes[g] ? a.sizes[g].toFixed(2) : ''), fmtW(a.kg), '', '', '', '', '']);
     }
-    return download(`production-${f.target}.csv`, lines.map(l => l.map(csvCell).join(',')).join('\n'), 'text/csv');
+    return download(`roast-plan-${f.target}.csv`, lines.map(l => l.map(csvCell).join(',')).join('\n'), 'text/csv');
   }
   if (t.dataset.delcoffee) {
     const c = state.coffees.find(c => c.id === t.dataset.delcoffee);
@@ -599,7 +734,8 @@ $('#view').addEventListener('click', e => {
   }
   if (t.dataset.unignore !== undefined) { state.ignored.splice(+t.dataset.unignore, 1); save(); return render(); }
   if (t.id === 'bulkAdd') {
-    const n = $('#bulkNames').value.split('\n').map(n => addCoffee(n)).filter(Boolean).length;
+    const category = $('#bulkCat').value.trim();
+    const n = $('#bulkNames').value.split('\n').map(name => addCoffee(name, { category })).filter(Boolean).length;
     save(); render(); return toast(`Added ${n} coffee${n === 1 ? '' : 's'}.`);
   }
   if (t.id === 'impCancel') { pendingImport = null; return render(); }
@@ -618,6 +754,8 @@ $('#view').addEventListener('click', e => {
     if (confirm(`Delete all ${src.name} orders?`)) { state.orders = state.orders.filter(o => o.source !== src.id); save(); render(); }
     return;
   }
+  if (t.id === 'addSrc') { state.sources.push({ id: uid(), name: 'New stream', singleAccount: false, mode: 'forecast' }); save(); return render(); }
+  if (t.dataset.delsrc) { state.sources = state.sources.filter(x => x.id !== t.dataset.delsrc); save(); return render(); }
   if (t.id === 'backup') return download(`roast-planner-backup-${todayIso()}.json`, JSON.stringify(state, null, 1), 'application/json');
   if (t.id === 'pruneOld') {
     const cutoff = addDays(todayIso(), -84);
@@ -633,13 +771,17 @@ $('#view').addEventListener('change', e => {
   if (t.id === 'targetWeek') { s.targetWeek = t.value; save(); return render(); }
   if (t.id === 'lookback') { s.lookbackWeeks = +t.value; save(); return render(); }
   if (t.id === 'method') { s.method = t.value; save(); return render(); }
-  if (t.dataset.adj) { state.adjustments[t.dataset.adj] = parseFloat(t.value) || 0; save(); return render(); }
+  if (t.id === 'dayFilter') { s.roastDayFilter = t.value; save(); return render(); }
+  if (t.dataset.adj) { state.adjustments[t.dataset.adj] = fromDisp(parseFloat(t.value) || 0); save(); return render(); }
+  if (t.dataset.left) { state.leftovers[t.dataset.left] = fromDisp(parseFloat(t.value) || 0); save(); return render(); }
   if (t.dataset.cf) {
     const c = state.coffees.find(c => c.id === t.dataset.id);
     const f = t.dataset.cf;
     if (f === 'active') c.active = t.checked;
     else if (f === 'aliases') c.aliases = splitList(t.value);
     else if (f === 'name') c.name = t.value.trim() || c.name;
+    else if (['category', 'roastDay', 'recipe'].includes(f)) c[f] = t.value.trim();
+    else if (f === 'batchKg') c.batchKg = fromDisp(parseFloat(t.value) || 0);
     else c[f] = parseFloat(t.value) || 0;
     save(); return render();
   }
@@ -662,9 +804,13 @@ $('#view').addEventListener('change', e => {
     save(); return render();
   }
   if (t.dataset.set) { s[t.dataset.set] = t.type === 'number' ? parseFloat(t.value) || 0 : t.value; save(); return render(); }
+  if (t.dataset.setw) { s[t.dataset.setw] = fromDisp(parseFloat(t.value) || 0); save(); return render(); }
   if (t.dataset.src) {
     const src = state.sources.find(x => x.id === t.dataset.src);
-    if (t.dataset.srcf === 'name') src.name = t.value.trim() || src.name; else src.singleAccount = t.checked;
+    const f = t.dataset.srcf;
+    if (f === 'name') src.name = t.value.trim() || src.name;
+    else if (f === 'mode') src.mode = t.value;
+    else src.singleAccount = t.checked;
     save(); return render();
   }
   if (t.dataset.map) { pendingImport.map[t.dataset.map] = t.value; return render(); }
@@ -677,12 +823,11 @@ $('#view').addEventListener('change', e => {
     const file = t.files[0];
     const sourceId = $('#impSource').value;
     file.text().then(text => {
-      const rows = parseCSV(text);
-      if (rows.length < 2) return toast('That file looks empty.');
-      const headers = rows[0].map(h => h.trim());
-      pendingImport = { fileName: file.name, headers, rows: rows.slice(1), sourceId, map: guessMapping(headers, sourceId) };
+      const all = parseCSV(text);
+      if (all.length < 2) return toast('That file looks empty.');
+      const { headers, rows, title } = splitHeader(all);
+      pendingImport = { fileName: file.name, title, headers, rows, sourceId, map: guessMapping(headers, sourceId) };
       render();
-      $('#impSource').value = sourceId;
     });
     return;
   }
@@ -702,23 +847,28 @@ $('#view').addEventListener('submit', e => {
   e.preventDefault();
   const fd = new FormData(e.target);
   if (e.target.id === 'addCoffee') {
-    const c = addCoffee(fd.get('name'), splitList(fd.get('aliases')));
+    const c = addCoffee(fd.get('name'), {
+      aliases: splitList(fd.get('aliases')),
+      category: String(fd.get('category') || '').trim(),
+      roastDay: fd.get('roastDay') || '',
+      lossPct: parseFloat(fd.get('loss')) || 0,
+      batchKg: fromDisp(parseFloat(fd.get('batch')) || 0),
+    });
     if (!c) return toast('That coffee already exists.');
-    c.lossPct = parseFloat(fd.get('loss')) || 0; c.batchKg = parseFloat(fd.get('batch')) || 0;
     save(); render(); $('#addCoffee input[name=name]').focus();
     return toast(`Added ${c.name}.`);
   }
   if (e.target.id === 'manualForm') {
     const coffee = state.coffees.find(c => c.id === fd.get('coffee'));
-    const kg = parseFloat(fd.get('kg'));
-    if (!coffee || !(kg > 0)) return;
-    state.orders.push({ key: 'manual|' + uid(), source: fd.get('source'), orderId: '', date: fd.get('date'), account: fd.get('account').trim(), product: coffee.name, variant: '', qty: kg, bagKg: 1 });
+    const qty = parseFloat(fd.get('qty'));
+    if (!coffee || !(qty > 0)) return;
+    state.orders.push({ key: 'manual|' + uid(), source: fd.get('source'), orderId: '', date: fd.get('date'), account: String(fd.get('account')).trim(), product: coffee.name, variant: '', qty, bagKg: parseFloat(fd.get('bag')) || state.settings.defaultBagKg });
     save(); render(); toast('Order added.');
   }
 });
 
 // Expose pure helpers for testing in the console.
-window.FCR = { parseCSV, parseDate, parseBagKg, computeForecast, mondayOf };
+window.FCR = { parseCSV, parseDate, parseBagKg, sizeLabel, parseRecipe, computeForecast, mondayOf };
 
 render();
 })();

@@ -1,73 +1,74 @@
 Order Number,Order Date,Customer,SKU,Product,Variant,Quantity,Status
-OS-5001,21/09/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5001,21/09/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5002,21/09/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5002,21/09/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,2,Dispatched
-OS-5003,21/09/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,2,Dispatched
-OS-5003,21/09/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5004,24/09/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5004,24/09/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5005,24/09/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5005,24/09/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,2,Dispatched
-OS-5006,24/09/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5006,24/09/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5007,28/09/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5007,28/09/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5008,28/09/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5008,28/09/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
-OS-5009,28/09/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5009,28/09/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5010,01/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5010,01/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5011,01/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5011,01/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
-OS-5012,01/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5012,01/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5013,05/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5013,05/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5014,05/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5014,05/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
-OS-5015,05/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5015,05/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5016,08/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5016,08/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5017,08/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5017,08/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,2,Dispatched
-OS-5018,08/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5018,08/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5019,12/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5019,12/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5020,12/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5020,12/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
-OS-5021,12/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5021,12/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5022,15/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,4,Dispatched
-OS-5022,15/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5023,15/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5023,15/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,2,Dispatched
-OS-5024,15/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5024,15/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5025,19/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5025,19/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5026,19/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5026,19/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
-OS-5027,19/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5027,19/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5028,22/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5028,22/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,2,Dispatched
-OS-5029,22/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5029,22/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
-OS-5030,22/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5030,22/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5031,26/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,4,Dispatched
-OS-5031,26/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5032,26/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,3,Dispatched
-OS-5032,26/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
-OS-5033,26/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5033,26/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
-OS-5034,29/10/2026,Prairie Cafe,HOU-1KG,House Espresso,1kg / Whole Bean,4,Dispatched
-OS-5034,29/10/2026,Prairie Cafe,DEC-1KG,Decaf Mexico,1kg / Whole Bean,1,Dispatched
-OS-5035,29/10/2026,Bridge St Bakery,HOU-1KG,House Espresso,1kg / Whole Bean,2,Dispatched
-OS-5035,29/10/2026,Bridge St Bakery,COL-1KG,Colombia Huila,1kg / Whole Bean,1,Dispatched
-OS-5036,29/10/2026,North End Deli,ETH-1KG,Ethiopia Guji,1kg / Whole Bean,1,Dispatched
-OS-5036,29/10/2026,North End Deli,HOU-1KG,House Espresso,1kg / Whole Bean,1,Dispatched
+OS-5001,09/24/2026,Maple Street Cafe,,Rogue Espresso,5lb / Whole Bean,3,Dispatched
+OS-5001,09/24/2026,Maple Street Cafe,,Swiss Water Decaf,5lb / Whole Bean,1,Dispatched
+OS-5002,09/24/2026,Riverbend Bakery,,Rogue Espresso,5lb / Whole Bean,3,Dispatched
+OS-5002,09/24/2026,Riverbend Bakery,,Rogue Espresso,300g / Whole Bean,5,Dispatched
+OS-5002,09/24/2026,Riverbend Bakery,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5002,09/24/2026,Riverbend Bakery,,North 40 Filter,300g / Whole Bean,3,Dispatched
+OS-5003,09/24/2026,Prairie Diner,,Classic Diner Brazil Dark Caramelo,5lb / Whole Bean,2,Dispatched
+OS-5003,09/24/2026,Prairie Diner,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5004,09/24/2026,Hilltop Market,,Seasonal Blend,300g / Whole Bean,8,Dispatched
+OS-5004,09/24/2026,Hilltop Market,,Darkside Brazil Caramelo,300g / Whole Bean,5,Dispatched
+OS-5004,09/24/2026,Hilltop Market,,Swiss Water Decaf Peru,300g / Whole Bean,3,Dispatched
+OS-5005,09/24/2026,Le Croissant,,Le Croissant Guatemala 20#,5lb / Whole Bean,5,Dispatched
+OS-5006,10/01/2026,Maple Street Cafe,,Rogue Espresso,5lb / Whole Bean,4,Dispatched
+OS-5006,10/01/2026,Maple Street Cafe,,Swiss Water Decaf,5lb / Whole Bean,1,Dispatched
+OS-5007,10/01/2026,Riverbend Bakery,,Rogue Espresso,5lb / Whole Bean,2,Dispatched
+OS-5007,10/01/2026,Riverbend Bakery,,Rogue Espresso,300g / Whole Bean,5,Dispatched
+OS-5007,10/01/2026,Riverbend Bakery,,North 40 Filter,5lb / Whole Bean,2,Dispatched
+OS-5007,10/01/2026,Riverbend Bakery,,North 40 Filter,300g / Whole Bean,3,Dispatched
+OS-5008,10/01/2026,Prairie Diner,,Classic Diner Brazil Dark Caramelo,5lb / Whole Bean,1,Dispatched
+OS-5008,10/01/2026,Prairie Diner,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5009,10/01/2026,Hilltop Market,,Seasonal Blend,300g / Whole Bean,7,Dispatched
+OS-5009,10/01/2026,Hilltop Market,,Darkside Brazil Caramelo,300g / Whole Bean,7,Dispatched
+OS-5009,10/01/2026,Hilltop Market,,Swiss Water Decaf Peru,300g / Whole Bean,3,Dispatched
+OS-5010,10/01/2026,Le Croissant,,Le Croissant Guatemala 20#,5lb / Whole Bean,4,Dispatched
+OS-5011,10/08/2026,Maple Street Cafe,,Rogue Espresso,5lb / Whole Bean,2,Dispatched
+OS-5011,10/08/2026,Maple Street Cafe,,Swiss Water Decaf,5lb / Whole Bean,1,Dispatched
+OS-5012,10/08/2026,Riverbend Bakery,,Rogue Espresso,5lb / Whole Bean,2,Dispatched
+OS-5012,10/08/2026,Riverbend Bakery,,Rogue Espresso,300g / Whole Bean,7,Dispatched
+OS-5012,10/08/2026,Riverbend Bakery,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5012,10/08/2026,Riverbend Bakery,,North 40 Filter,300g / Whole Bean,3,Dispatched
+OS-5013,10/08/2026,Prairie Diner,,Classic Diner Brazil Dark Caramelo,5lb / Whole Bean,2,Dispatched
+OS-5013,10/08/2026,Prairie Diner,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5014,10/08/2026,Hilltop Market,,Seasonal Blend,300g / Whole Bean,7,Dispatched
+OS-5014,10/08/2026,Hilltop Market,,Darkside Brazil Caramelo,300g / Whole Bean,6,Dispatched
+OS-5014,10/08/2026,Hilltop Market,,Swiss Water Decaf Peru,300g / Whole Bean,4,Dispatched
+OS-5015,10/08/2026,Le Croissant,,Le Croissant Guatemala 20#,5lb / Whole Bean,3,Dispatched
+OS-5016,10/15/2026,Maple Street Cafe,,Rogue Espresso,5lb / Whole Bean,2,Dispatched
+OS-5016,10/15/2026,Maple Street Cafe,,Swiss Water Decaf,5lb / Whole Bean,1,Dispatched
+OS-5017,10/15/2026,Riverbend Bakery,,Rogue Espresso,5lb / Whole Bean,2,Dispatched
+OS-5017,10/15/2026,Riverbend Bakery,,Rogue Espresso,300g / Whole Bean,7,Dispatched
+OS-5017,10/15/2026,Riverbend Bakery,,North 40 Filter,5lb / Whole Bean,2,Dispatched
+OS-5017,10/15/2026,Riverbend Bakery,,North 40 Filter,300g / Whole Bean,4,Dispatched
+OS-5018,10/15/2026,Prairie Diner,,Classic Diner Brazil Dark Caramelo,5lb / Whole Bean,3,Dispatched
+OS-5018,10/15/2026,Prairie Diner,,North 40 Filter,5lb / Whole Bean,2,Dispatched
+OS-5019,10/15/2026,Hilltop Market,,Seasonal Blend,300g / Whole Bean,8,Dispatched
+OS-5019,10/15/2026,Hilltop Market,,Darkside Brazil Caramelo,300g / Whole Bean,6,Dispatched
+OS-5019,10/15/2026,Hilltop Market,,Swiss Water Decaf Peru,300g / Whole Bean,4,Dispatched
+OS-5020,10/15/2026,Le Croissant,,Le Croissant Guatemala 20#,5lb / Whole Bean,4,Dispatched
+OS-5021,10/22/2026,Maple Street Cafe,,Rogue Espresso,5lb / Whole Bean,3,Dispatched
+OS-5021,10/22/2026,Maple Street Cafe,,Swiss Water Decaf,5lb / Whole Bean,1,Dispatched
+OS-5022,10/22/2026,Riverbend Bakery,,Rogue Espresso,5lb / Whole Bean,2,Dispatched
+OS-5022,10/22/2026,Riverbend Bakery,,Rogue Espresso,300g / Whole Bean,7,Dispatched
+OS-5022,10/22/2026,Riverbend Bakery,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5022,10/22/2026,Riverbend Bakery,,North 40 Filter,300g / Whole Bean,5,Dispatched
+OS-5023,10/22/2026,Prairie Diner,,Classic Diner Brazil Dark Caramelo,5lb / Whole Bean,2,Dispatched
+OS-5023,10/22/2026,Prairie Diner,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5024,10/22/2026,Hilltop Market,,Seasonal Blend,300g / Whole Bean,7,Dispatched
+OS-5024,10/22/2026,Hilltop Market,,Darkside Brazil Caramelo,300g / Whole Bean,7,Dispatched
+OS-5024,10/22/2026,Hilltop Market,,Swiss Water Decaf Peru,300g / Whole Bean,4,Dispatched
+OS-5025,10/22/2026,Le Croissant,,Le Croissant Guatemala 20#,5lb / Whole Bean,4,Dispatched
+OS-5026,10/29/2026,Maple Street Cafe,,Rogue Espresso,5lb / Whole Bean,3,Dispatched
+OS-5026,10/29/2026,Maple Street Cafe,,Swiss Water Decaf,5lb / Whole Bean,2,Dispatched
+OS-5027,10/29/2026,Riverbend Bakery,,Rogue Espresso,5lb / Whole Bean,3,Dispatched
+OS-5027,10/29/2026,Riverbend Bakery,,Rogue Espresso,300g / Whole Bean,5,Dispatched
+OS-5027,10/29/2026,Riverbend Bakery,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5027,10/29/2026,Riverbend Bakery,,North 40 Filter,300g / Whole Bean,4,Dispatched
+OS-5028,10/29/2026,Prairie Diner,,Classic Diner Brazil Dark Caramelo,5lb / Whole Bean,2,Dispatched
+OS-5028,10/29/2026,Prairie Diner,,North 40 Filter,5lb / Whole Bean,1,Dispatched
+OS-5029,10/29/2026,Hilltop Market,,Seasonal Blend,300g / Whole Bean,9,Dispatched
+OS-5029,10/29/2026,Hilltop Market,,Darkside Brazil Caramelo,300g / Whole Bean,7,Dispatched
+OS-5029,10/29/2026,Hilltop Market,,Swiss Water Decaf Peru,300g / Whole Bean,3,Dispatched
+OS-5030,10/29/2026,Le Croissant,,Le Croissant Guatemala 20#,5lb / Whole Bean,3,Dispatched
+OS-9001,11/02/2026,Le Croissant,,Le Croissant Guatemala 20#,5lb / Whole Bean,6,Open
