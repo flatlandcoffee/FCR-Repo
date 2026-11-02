@@ -28,7 +28,9 @@ Data is saved in your browser (localStorage). Use **Settings → Download backup
 ## How the forecast works
 
 - Orders are grouped into weeks starting on Monday.
-- For each **account × coffee × bag size**, the forecast is the average number of bags per week over the look-back weeks. Weeks with no order count as 0.
+- For each **account × coffee × bag size**, the forecast is the average number of bags per week over the look-back weeks (1–5). If an account skips a week, that week counts as 0.
+- **Weeks with no data loaded are left out.** Only weeks where that stream has any orders count, so with 2 weeks of history in a 4-week look-back, those 2 weeks are averaged. A banner shows when a stream has only some of the weeks loaded.
+- **Changed item codes:** matching uses product names, so older reports still count if the names are similar. If the names changed too, add the old names or codes to the coffee's *Also match*.
   - **Weighted** (default): recent weeks count more. With 4 weeks, the weights are 4, 3, 2, 1 from newest to oldest.
   - **Straight average:** every week counts equally.
 - If an account has already ordered for the roast week, the app uses the larger of that order and the forecast.

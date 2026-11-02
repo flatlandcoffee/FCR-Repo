@@ -265,9 +265,17 @@ function computeForecast() {
   for (let i = 1; i <= N; i++) weeks.push(addDays(target, -7 * i));
   const weekIdx = Object.fromEntries(weeks.map((w, i) => [w, i]));
   const weights = weeks.map((_, i) => s.method === 'weighted' ? N - i : 1);
-  const wSum = weights.reduce((a, b) => a + b, 0);
   const srcById = Object.fromEntries(state.sources.map(x => [x.id, x]));
   const paused = new Set(state.pausedAccounts);
+
+  // Which look-back weeks each stream has data for. Weeks with nothing loaded are left out of the average
+  // (not counted as zero), so a stream with only 2 weeks of history isn't halved in a 4-week look-back.
+  const covered = {}; // sourceId -> Set of week indexes
+  for (const o of state.orders) {
+    const wk = weekIdx[mondayOf(o.date)];
+    if (wk !== undefined) (covered[o.source] ||= new Set()).add(wk);
+  }
+  const denomFor = srcId => weights.reduce((a, w, i) => a + (covered[srcId]?.has(i) ? w : 0), 0);
 
   const lines = {};     // coffeeId -> key -> { account, source, sizes: {g: {hist, confirmed}} }
   const unmatched = {}; // product -> lines
@@ -303,7 +311,8 @@ function computeForecast() {
       const sizes = {};
       let kg = 0, confirmedAny = false;
       for (const [g, sz] of Object.entries(l.sizes)) {
-        const fc = sz.hist.reduce((a, n, i) => a + n * weights[i], 0) / wSum;
+        const denom = denomFor(l.source.id);
+        const fc = denom ? sz.hist.reduce((a, n, i) => a + n * weights[i], 0) / denom : 0;
         const use = l.source.mode === 'actual' ? sz.confirmed : Math.max(fc, sz.confirmed);
         if (sz.confirmed > 0 && sz.confirmed >= fc) confirmedAny = true;
         sizes[g] = use; kg += use * uk(g);
@@ -329,7 +338,9 @@ function computeForecast() {
   });
 
   const sizes = [...allSizes].sort((a, b) => b - a);
-  return { target, weeks, rows, sizes, unmatched };
+  const coverage = state.sources.filter(x => x.mode !== 'actual')
+    .map(x => ({ name: x.name, weeks: covered[x.id]?.size || 0 }));
+  return { target, weeks, rows, sizes, unmatched, coverage };
 }
 
 // ---------- Views ----------
@@ -358,12 +369,16 @@ views.production = () => {
   if (unmatchedCount) {
     html += `<div class="notice"><b>${unmatchedCount} product${unmatchedCount > 1 ? 's' : ''}</b> in these weeks didn't match a coffee and are left out. <button class="link" data-goto="coffees">Match them →</button></div>`;
   }
+  const partial = f.coverage.filter(c => c.weeks > 0 && c.weeks < f.weeks.length);
+  if (partial.length) {
+    html += `<div class="notice">Averaging only the weeks loaded: ${partial.map(c => `<b>${esc(c.name)}</b> ${c.weeks} of ${f.weeks.length} weeks`).join(', ')}. The forecast will steady as more weeks are added.</div>`;
+  }
   html += `
   <div class="card no-print">
     <div class="row">
       <label>Roasting for week of <input type="date" id="targetWeek" value="${f.target}"></label>
       <label>Look back
-        <select id="lookback">${[2, 3, 4, 5].map(n => `<option value="${n}" ${n == s.lookbackWeeks ? 'selected' : ''}>${n} weeks</option>`).join('')}</select>
+        <select id="lookback">${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${n == s.lookbackWeeks ? 'selected' : ''}>${n} weeks</option>`).join('')}</select>
       </label>
       <label>Method
         <select id="method">
